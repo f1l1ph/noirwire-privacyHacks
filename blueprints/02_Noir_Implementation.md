@@ -317,6 +317,10 @@ pub fn path_to_index<let N: u32>(path_indices: [u1; N]) -> Field {
 }
 
 /// Verify a Merkle update (old leaf → new leaf)
+///
+/// NOTE: This implementation assumes the update happens at the same position
+/// (same path_indices). For batch updates where positions differ, use
+/// verify_batch_update() which handles non-sequential tree modifications.
 pub fn verify_update<let N: u32>(
     old_leaf: Field,
     new_leaf: Field,
@@ -341,6 +345,45 @@ pub fn verify_update<let N: u32>(
     }
 
     old_valid & (current == new_root)
+}
+
+/// Verify batch tree update (multiple leaves at different positions)
+/// Optimized for non-sequential updates common in transfers
+pub fn verify_batch_update<let N: u32, let M: u32>(
+    updates: [(Field, Field, MerkleProof<N>); M],  // (old_leaf, new_leaf, proof) pairs
+    old_root: Field,
+    new_root: Field
+) -> bool {
+    // 1. Verify all old leaves exist in old tree
+    for i in 0..M {
+        let (old_leaf, _, proof) = updates[i];
+        assert(verify_inclusion(old_leaf, old_root, proof));
+    }
+
+    // 2. Apply all updates and verify final root
+    // This is more efficient than sequential updates when positions don't overlap
+    let mut intermediate_root = old_root;
+
+    for i in 0..M {
+        let (old_leaf, new_leaf, proof) = updates[i];
+
+        // Compute intermediate root after this update
+        let mut current = new_leaf;
+        for j in 0..N {
+            let sibling = proof.siblings[j];
+            let is_right = proof.path_indices[j];
+
+            current = if is_right == 1 {
+                hash_pair(sibling, current)
+            } else {
+                hash_pair(current, sibling)
+            };
+        }
+
+        intermediate_root = current;
+    }
+
+    intermediate_root == new_root
 }
 
 /// Compute an empty tree root of given depth

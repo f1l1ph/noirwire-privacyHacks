@@ -116,6 +116,11 @@ The main state account for the shielded pool:
 
 use anchor_lang::prelude::*;
 
+/// Configuration: Historical roots ring buffer size
+/// Default: 32 roots (allows ~32 blocks of delayed spending)
+/// Increase for longer windows, decrease to save account space
+pub const HISTORICAL_ROOTS_SIZE: usize = 32;
+
 #[account]
 #[derive(Default)]
 pub struct PoolState {
@@ -126,7 +131,9 @@ pub struct PoolState {
     pub commitment_root: [u8; 32],
 
     /// Historical roots (for delayed spending - keeps last N roots valid)
-    pub historical_roots: [[u8; 32]; 32],  // Ring buffer of 32 roots
+    /// NOTE: Ring buffer size (32) is configurable via HISTORICAL_ROOTS_SIZE constant
+    /// Increase for longer spending windows, decrease to save space
+    pub historical_roots: [[u8; 32]; HISTORICAL_ROOTS_SIZE],
     pub roots_index: u8,
 
     /// Total shielded balance (for accounting, public info)
@@ -160,7 +167,7 @@ impl PoolState {
     pub const SIZE: usize = 8 +  // discriminator
         32 +                      // authority
         32 +                      // commitment_root
-        (32 * 32) +              // historical_roots
+        (32 * HISTORICAL_ROOTS_SIZE) +  // historical_roots (configurable)
         1 +                       // roots_index
         8 +                       // total_shielded
         32 +                      // token_mint
@@ -182,7 +189,7 @@ impl PoolState {
     /// Update root (push current to history)
     pub fn update_root(&mut self, new_root: [u8; 32]) {
         self.historical_roots[self.roots_index as usize] = self.commitment_root;
-        self.roots_index = (self.roots_index + 1) % 32;
+        self.roots_index = (self.roots_index + 1) % (HISTORICAL_ROOTS_SIZE as u8);
         self.commitment_root = new_root;
     }
 }
@@ -697,6 +704,7 @@ use crate::errors::PoolError;
 use crate::events::BatchSettlementEvent;
 
 #[derive(Accounts)]
+#[instruction(new_root: [u8; 32], nullifiers: Vec<[u8; 32]>)]
 pub struct SettleBatch<'info> {
     /// Pool state
     #[account(
@@ -726,6 +734,9 @@ pub struct SettleBatch<'info> {
     pub payer: Signer<'info>,
 
     pub system_program: Program<'info, System>,
+
+    // NOTE: Nullifier PDAs are passed via remaining_accounts
+    // Each nullifier gets its own PDA created in this instruction
 }
 
 pub fn handler(
@@ -737,6 +748,10 @@ pub fn handler(
     let pool = &mut ctx.accounts.pool;
 
     require!(nullifiers.len() <= 256, PoolError::BatchTooLarge);
+    require!(
+        ctx.remaining_accounts.len() == nullifiers.len(),
+        PoolError::InvalidNullifierAccounts
+    );
 
     // 1. Build public inputs for batch proof
     //    [initial_root, final_root, nullifiers_hash]
@@ -756,12 +771,67 @@ pub fn handler(
     );
     zk_verifier::cpi::verify(cpi_ctx, proof.proof_data, public_inputs)?;
 
-    // 3. Record all nullifiers
-    //    Note: In production, this would be done via remaining_accounts
-    //    to create nullifier PDAs for each nullifier
-    for nullifier in &nullifiers {
-        // Nullifier PDA creation is handled via remaining_accounts
-        // This is a simplified version
+    // 3. Record all nullifiers via remaining_accounts
+    // Each remaining_account should be an uninitialized nullifier PDA
+    let pool_key = pool.key();
+    let current_slot = Clock::get()?.slot;
+
+    for (i, nullifier) in nullifiers.iter().enumerate() {
+        let nullifier_account = &ctx.remaining_accounts[i];
+
+        // Verify PDA derivation
+        let (expected_pda, bump) = Pubkey::find_program_address(
+            &[b"nullifier", pool_key.as_ref(), nullifier],
+            ctx.program_id,
+        );
+        require!(
+            nullifier_account.key() == expected_pda,
+            PoolError::InvalidNullifierPDA
+        );
+
+        // Create nullifier account
+        let nullifier_seeds = &[
+            b"nullifier",
+            pool_key.as_ref(),
+            nullifier.as_ref(),
+            &[bump],
+        ];
+
+        // Allocate space for NullifierEntry
+        let rent = Rent::get()?;
+        let space = NullifierEntry::SIZE;
+        let lamports = rent.minimum_balance(space);
+
+        anchor_lang::solana_program::program::invoke_signed(
+            &anchor_lang::solana_program::system_instruction::create_account(
+                ctx.accounts.payer.key,
+                nullifier_account.key,
+                lamports,
+                space as u64,
+                ctx.program_id,
+            ),
+            &[
+                ctx.accounts.payer.to_account_info(),
+                nullifier_account.clone(),
+                ctx.accounts.system_program.to_account_info(),
+            ],
+            &[nullifier_seeds],
+        )?;
+
+        // Initialize nullifier data
+        let mut nullifier_data = nullifier_account.try_borrow_mut_data()?;
+        let nullifier_entry = NullifierEntry {
+            nullifier: *nullifier,
+            slot: current_slot,
+            bump,
+        };
+
+        // Serialize (simplified - use anchor serialization in production)
+        nullifier_data[..8].copy_from_slice(&NullifierEntry::discriminator().to_le_bytes());
+        nullifier_data[8..40].copy_from_slice(nullifier);
+        nullifier_data[40..48].copy_from_slice(&current_slot.to_le_bytes());
+        nullifier_data[48] = bump;
+
         pool.total_nullifiers += 1;
     }
 
@@ -789,6 +859,57 @@ fn hash_nullifiers(nullifiers: &[[u8; 32]]) -> [u8; 32] {
         hasher_input.extend_from_slice(n);
     }
     keccak::hash(&hasher_input).to_bytes()
+}
+
+impl NullifierEntry {
+    /// Account discriminator (first 8 bytes)
+    pub fn discriminator() -> u64 {
+        // Use anchor's discriminator derivation
+        // In production: anchor_lang::Discriminator::discriminator(&Self::default())
+        0x1234567890abcdef // Placeholder
+    }
+}
+```
+
+**Client-side usage:**
+
+```typescript
+// Building the transaction with remaining_accounts
+async function settleBatch(
+  program: Program,
+  poolPubkey: PublicKey,
+  nullifiers: Buffer[],
+  proof: ProofData,
+) {
+  // 1. Derive nullifier PDAs
+  const nullifierPDAs = await Promise.all(
+    nullifiers.map((n) =>
+      PublicKey.findProgramAddress(
+        [Buffer.from("nullifier"), poolPubkey.toBuffer(), n],
+        program.programId,
+      ),
+    ),
+  );
+
+  // 2. Build instruction with remaining_accounts
+  await program.methods
+    .settleBatch(newRoot, nullifiers, proof)
+    .accounts({
+      pool: poolPubkey,
+      perAuthority: perAuthority.publicKey,
+      verificationKey: vkPubkey,
+      verifierProgram: verifierProgramId,
+      payer: payer.publicKey,
+      systemProgram: SystemProgram.programId,
+    })
+    .remainingAccounts(
+      nullifierPDAs.map((pda) => ({
+        pubkey: pda[0],
+        isSigner: false,
+        isWritable: true,
+      })),
+    )
+    .rpc();
 }
 ```
 
@@ -974,6 +1095,33 @@ fn alt_bn128_pairing(input: &[u8]) -> Result<Vec<u8>> {
 
 /// Negate G1 point (flip y-coordinate in Fp)
 /// For BN254: -P = (x, p - y) where p is the field modulus
+///
+/// NOTE: Production implementation should use a big integer library:
+/// ```toml
+/// [dependencies]
+/// num-bigint = "0.4"
+/// num-traits = "0.2"
+/// ```
+///
+/// Example with num-bigint:
+/// ```rust
+/// use num_bigint::BigUint;
+/// use num_traits::Num;
+///
+/// fn negate_g1_bigint(point: &[u8; 64]) -> Result<[u8; 64]> {
+///     let p = BigUint::from_str_radix(
+///         "30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47",
+///         16
+///     ).unwrap();
+///
+///     let mut result = *point;
+///     let y = BigUint::from_bytes_be(&point[32..64]);
+///     let neg_y = (&p - y) % &p;
+///
+///     result[32..64].copy_from_slice(&neg_y.to_bytes_be());
+///     Ok(result)
+/// }
+/// ```
 fn negate_g1(point: &[u8; 64]) -> Result<[u8; 64]> {
     // BN254 field modulus p
     const P: [u8; 32] = [
@@ -993,23 +1141,32 @@ fn negate_g1(point: &[u8; 64]) -> Result<[u8; 64]> {
     Ok(result)
 }
 
+/// Field subtraction in BN254 finite field
+/// IMPORTANT: This simplified implementation is for demonstration only.
+/// Production code MUST use a proper big integer library like num-bigint
+/// to ensure correct modular arithmetic.
 fn field_sub(a: &[u8; 32], b: &[u8]) -> [u8; 32] {
-    // Subtract b from a in the finite field
-    // This is simplified - production code needs proper big integer arithmetic
+    // WARNING: Simplified implementation - replace with num-bigint in production
     let mut result = [0u8; 32];
-    let mut borrow = 0u16;
+    let mut borrow: u16 = 0;
+
     for i in (0..32).rev() {
-        let diff = (a[i] as u16) - (b[i] as u16) - borrow;
-        result[i] = diff as u8;
+        let a_val = a[i] as u16;
+        let b_val = b[i] as u16;
+
+        let diff = a_val.wrapping_sub(b_val).wrapping_sub(borrow);
+
+        result[i] = (diff & 0xFF) as u8;
         borrow = if diff > 255 { 1 } else { 0 };
     }
+
     result
 }
 ```
 
 ### 4.3 Compute Budget Considerations
 
-````rust
+```rust
 // Groth16 verification costs on Solana (approximate)
 // Based on Light Protocol benchmarks
 
@@ -1041,8 +1198,114 @@ pub fn estimate_verify_cu(public_input_count: usize) -> u32 {
 ///     units: 500_000,
 /// });
 /// ```
+```
+
+### 4.4 Compute Budget Benchmarking
+
+**IMPORTANT:** The estimates above are theoretical. Production deployments MUST run
+actual benchmarks to determine precise CU costs.
+
+#### Benchmarking Strategy
+
+```bash
+# 1. Deploy verifier to devnet
+anchor deploy --provider.cluster devnet
+
+# 2. Run benchmark suite
+cargo test --release -- --nocapture bench_
+
+# 3. Analyze actual CU consumption
+solana confirm -v <TRANSACTION_SIGNATURE>
+```
+
+#### Benchmark Suite
+
+```rust
+// tests/bench_groth16.rs
+
+#[cfg(test)]
+mod benches {
+    use super::*;
+    use anchor_lang::solana_program::native_token::LAMPORTS_PER_SOL;
+
+    #[tokio::test]
+    async fn bench_verify_deposit_proof() {
+        let (mut banks_client, payer, recent_blockhash) = program_test().start().await;
+
+        // Generate real proof
+        let proof = generate_deposit_proof(...);
+
+        // Measure CU consumption
+        let tx = Transaction::new_signed_with_payer(
+            &[
+                ComputeBudgetInstruction::set_compute_unit_limit(1_400_000),
+                verify_instruction(proof),
+            ],
+            Some(&payer.pubkey()),
+            &[&payer],
+            recent_blockhash,
+        );
+
+        let result = banks_client
+            .process_transaction_with_commitment(tx, CommitmentLevel::Confirmed)
+            .await;
+
+        // Extract actual CU used from result
+        println!("Deposit proof verification: {} CU", result.units_consumed);
+    }
+
+    #[tokio::test]
+    async fn bench_verify_transfer_proof() {
+        // Similar to above, but for transfer circuit
+        // Expected: ~500k-600k CU (more public inputs)
+    }
+
+    #[tokio::test]
+    async fn bench_verify_batch_proof() {
+        // Test batch proof verification
+        // Expected: ~400k-500k CU (compressed public inputs)
+    }
 }
-````
+```
+
+#### Expected Results (To be confirmed via benchmarking)
+
+| Circuit Type | Public Inputs | Estimated CU | Need Benchmark? |
+|--------------|---------------|--------------|-----------------|
+| Deposit      | 3             | ~420k        | ✅ Yes          |
+| Transfer     | 3             | ~420k        | ✅ Yes          |
+| Withdraw     | 5             | ~450k        | ✅ Yes          |
+| Batch (N=4)  | 3 (compressed)| ~420k        | ✅ Yes          |
+| Batch (N=64) | 3 (compressed)| ~420k        | ✅ Yes          |
+
+#### Production Recommendations
+
+1. **Always request sufficient CU:**
+   ```typescript
+   const computeBudget = ComputeBudgetProgram.setComputeUnitLimit({
+     units: 600_000, // Buffer for safety
+   });
+   ```
+
+2. **Set compute unit price for priority:**
+   ```typescript
+   const priorityFee = ComputeBudgetProgram.setComputeUnitPrice({
+     microLamports: 1, // Adjust based on network congestion
+   });
+   ```
+
+3. **Monitor actual consumption:**
+   ```typescript
+   const sig = await program.methods.verify(...).rpc();
+   const tx = await connection.getTransaction(sig, {
+     maxSupportedTransactionVersion: 0,
+   });
+   console.log("Actual CU used:", tx.meta.computeUnitsConsumed);
+   ```
+
+4. **Optimize if needed:**
+   - If CU > 600k: Consider splitting into multiple transactions
+   - If CU < 300k: You may be able to batch multiple verifications
 
 ---
 
