@@ -1,0 +1,29 @@
+{
+  "name": "@noirwire/types",
+  "version": "0.1.0",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@noirwire/eslint-config": "*",
+    "@noirwire/typescript-config": "*",
+    "eslint": "^9.39.1",
+    "tsup": "^8.0.1",
+    "typescript": "^5.9.2"
+  }
+}

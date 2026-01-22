@@ -1,0 +1,13 @@
+{
+  "name": "@noirwire/config-eslint",
+  "version": "0.0.0",
+  "private": true,
+  "exports": {
+    "./base": "./base.js",
+    "./next": "./next.js",
+    "./nest": "./nest.js"
+  },
+  "dependencies": {
+    "@noirwire/eslint-config": "workspace:*"
+  }
+}

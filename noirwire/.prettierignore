@@ -1,0 +1,22 @@
+# Dependencies
+node_modules
+**/node_modules
+
+# Build outputs
+dist
+build
+.next
+.turbo
+out
+coverage
+
+# Generated files
+*.tsbuildinfo
+.DS_Store
+
+# Supabase
+supabase/.branches
+supabase/.temp
+
+# Docker
+docker/volumes

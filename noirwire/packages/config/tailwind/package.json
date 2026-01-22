@@ -1,0 +1,9 @@
+{
+  "name": "@noirwire/config-tailwind",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.js",
+  "peerDependencies": {
+    "tailwindcss": "^3.0.0"
+  }
+}

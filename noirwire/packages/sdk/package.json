@@ -1,0 +1,39 @@
+{
+  "name": "@noirwire/sdk",
+  "version": "0.1.0",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@noirwire/types": "*",
+    "@noirwire/utils": "*",
+    "@solana/web3.js": "^1.98.4",
+    "axios": "^1.13.2",
+    "bip39": "^3.1.0",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "@noirwire/eslint-config": "*",
+    "@noirwire/typescript-config": "*",
+    "eslint": "^9.39.1",
+    "tsup": "^8.0.1",
+    "typescript": "^5.9.2",
+    "vitest": "^1.2.0"
+  }
+}
