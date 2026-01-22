@@ -427,7 +427,7 @@ fn test_inclusion_proof() {
 // circuits/deposit/src/main.nr
 
 use noirwire_circuits::primitives::commitment::{compute_commitment_explicit, derive_owner};
-use noirwire_circuits::primitives::merkle::verify_update;
+use noirwire_circuits::primitives::merkle::{verify_update, path_to_index};
 use noirwire_circuits::primitives::types::{TREE_DEPTH, MerkleProof};
 
 /// Deposit (shield) public funds into the private pool

@@ -65,6 +65,244 @@ For a hackathon MVP: **single operator** (your team) running the PER node and an
 | 10  | Backend/API             | Relayer/indexer services       | NestJS API + indexer pipeline                                                         |
 | 11  | Database                | Notes + scans + caches         | Supabase Postgres + object storage (notes/scans/caches + proofs)                      |
 
+---
+
+## Detailed Sequence Diagrams
+
+### 1. Deposit Flow (Shield → Private)
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Wallet as Solana Wallet
+    participant Client as NoirWire Client
+    participant API as API Backend
+    participant PER as PER Executor
+    participant L1 as Solana L1
+    participant Pool as Shielded Pool
+
+    User->>Wallet: Connect wallet
+    Wallet-->>User: Public key
+
+    User->>Client: Deposit 100 SOL
+    Client->>Client: Generate commitment<br/>(hash(owner, amount, salt, vault_id))
+
+    Client->>L1: Submit deposit tx
+    Note over Client,L1: deposit(amount, commitment, proof)
+
+    L1->>Pool: Transfer 100 SOL to pool vault
+    Pool->>Pool: Verify ZK proof
+    Pool->>Pool: Update merkle root
+    Pool->>Pool: Emit DepositEvent
+
+    L1-->>Client: Tx confirmed
+
+    Client->>API: Subscribe to commitment
+    API->>API: Index DepositEvent
+    API-->>Client: Deposit confirmed
+
+    Client->>Client: Store commitment locally
+    Client-->>User: Deposit complete ✓
+```
+
+### 2. Private Transfer Flow (PER Execution)
+
+```mermaid
+sequenceDiagram
+    participant Sender as Sender (0zk wallet)
+    participant Client as NoirWire Client
+    participant API as API Backend
+    participant PER as PER Executor (TEE)
+    participant Prover as Noir Prover
+    participant Receiver as Receiver
+
+    Sender->>Client: Transfer 50 SOL to receiver
+    Client->>Client: Fetch sender's commitments
+    Client->>Client: Generate transfer inputs
+
+    Client->>API: POST /transfer
+    API->>PER: Forward transfer request
+
+    PER->>PER: Validate sender balance
+    PER->>Prover: Generate transfer proof
+    Note over Prover: Prove:<br/>- Sender has balance<br/>- Amount conservation<br/>- Merkle membership
+
+    Prover-->>PER: ZK proof
+
+    PER->>PER: Update local merkle tree<br/>(sender, receiver commitments)
+    PER->>PER: Add nullifier to pending set
+    PER->>PER: Accumulate proof for batch
+
+    PER-->>API: Transfer accepted
+    API-->>Client: Transfer pending
+
+    Client->>Client: Encrypt note for receiver
+    Client->>API: Upload encrypted note
+
+    API->>Receiver: Notify new transfer
+    Receiver->>API: Fetch encrypted note
+    Receiver->>Receiver: Decrypt with private key
+    Receiver-->>Receiver: Balance updated locally
+
+    Client-->>Sender: Transfer complete<br/>(pending settlement)
+```
+
+### 3. Batch Settlement Flow (PER → L1)
+
+```mermaid
+sequenceDiagram
+    participant PER as PER Executor
+    participant Aggregator as Batch Aggregator
+    participant API as API Backend
+    participant L1 as Solana L1
+    participant Pool as Shielded Pool
+    participant Verifier as ZK Verifier
+    participant Users as All Users
+
+    Note over PER: Batch threshold reached<br/>(100 transfers accumulated)
+
+    PER->>Aggregator: Aggregate 100 proofs
+    Note over Aggregator: Use multi-size batching:<br/>batch_64 + batch_32 + batch_4
+
+    Aggregator->>Aggregator: Generate final proof
+    Aggregator-->>PER: Aggregated proof
+
+    PER->>L1: Submit settlement tx
+    Note over PER,L1: settle_batch(<br/>  new_root,<br/>  nullifiers[100],<br/>  proof<br/>)
+
+    L1->>Pool: Process batch
+    Pool->>Verifier: Verify aggregated proof
+    Verifier->>Verifier: alt_bn128 pairing check
+    Verifier-->>Pool: Proof valid ✓
+
+    Pool->>Pool: Create 100 nullifier PDAs
+    Pool->>Pool: Update merkle root
+    Pool->>Pool: Emit BatchSettlementEvent
+
+    L1-->>PER: Settlement confirmed
+
+    PER->>API: Update indexed state
+    API->>API: Mark 100 transfers as settled
+
+    API->>Users: Broadcast settlement notifications
+    Users-->>Users: Transfers finalized on L1 ✓
+```
+
+### 4. Withdrawal Flow (Private → Unshield)
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Client as NoirWire Client
+    participant API as API Backend
+    participant PER as PER Executor
+    participant L1 as Solana L1
+    participant Pool as Shielded Pool
+    participant Wallet as User's SOL Wallet
+
+    User->>Client: Withdraw 50 SOL
+    Client->>Client: Select commitment to spend
+    Client->>Client: Generate nullifier
+
+    Client->>API: POST /withdraw
+    API->>PER: Forward withdraw request
+
+    PER->>PER: Generate withdraw proof
+    Note over PER: Prove:<br/>- Owns commitment<br/>- Has sufficient balance<br/>- Nullifier is unique
+
+    PER-->>API: Proof generated
+    API->>L1: Submit withdraw tx
+
+    L1->>Pool: Process withdrawal
+    Pool->>Pool: Verify ZK proof
+    Pool->>Pool: Verify merkle root (historical)
+    Pool->>Pool: Create nullifier PDA<br/>(prevents double-spend)
+
+    Pool->>Pool: Update merkle root
+    Pool->>Wallet: Transfer 50 SOL from vault
+    Pool->>Pool: Emit WithdrawEvent
+
+    L1-->>Client: Withdrawal confirmed
+
+    Client->>Client: Mark commitment as spent
+    Client->>API: Update local state
+
+    Wallet-->>User: 50 SOL received ✓
+```
+
+### 5. Vault Creation & Transfer Flow
+
+```mermaid
+sequenceDiagram
+    participant Admin as Vault Admin
+    participant Client as NoirWire Client
+    participant API as API Backend
+    participant L1 as Solana L1
+    participant Registry as Vault Registry
+    participant Member1 as Member 1
+    participant Member2 as Member 2
+
+    Admin->>Client: Create vault "DAO Treasury"
+    Client->>Client: Generate vault_id
+    Client->>Client: Create members merkle tree
+
+    Client->>L1: create_vault(vault_id, members_root)
+    L1->>Registry: Initialize vault account
+    Registry->>Registry: Store vault metadata
+    Registry-->>L1: Vault created
+    L1-->>Client: Vault PDA created
+
+    Admin->>Member1: Share vault credentials
+    Admin->>Member2: Share vault credentials
+
+    Member1->>Client: Deposit to vault
+    Client->>API: Deposit with vault_id
+    Note over Client,API: Same as regular deposit,<br/>but with vault_id set
+
+    Member2->>Client: View vault balances
+    Client->>API: GET /vaults/:id/balances
+    API->>API: Verify member authorization
+    API-->>Client: Return vault balances<br/>(visible to all members)
+
+    Member1->>Client: Transfer within vault to Member2
+    Client->>Client: Generate vault transfer proof
+    Note over Client: Prove:<br/>- Sender is vault member<br/>- Receiver is vault member<br/>- Sender has balance
+
+    Client->>API: POST /vault/transfer
+    API->>API: Verify both are members
+    API-->>Client: Transfer processed
+
+    Member2->>Client: Check balance
+    Client-->>Member2: Balance updated<br/>(visible to vault members)
+```
+
+### 6. End-to-End Privacy Flow
+
+```
+User A (Public)                    |  SHIELDED POOL (Private)  |  User B (Public)
+                                   |                           |
+1. Deposit 100 SOL ────────────────>│   Commitment A: 100      │
+   (visible on L1)                 │   (nobody knows owner)   │
+                                   │                           │
+2. Private Transfer ───────────────>│   Nullify A              │
+   50 SOL to User B                │   Commitment A': 50       │
+   (happens inside PER/TEE)        │   Commitment B: 50        │
+                                   │   (unlinkable transfers)  │
+                                   │                           │
+                                   │   User B withdraws ───────>  3. Receive 50 SOL
+                                   │   (visible on L1)         │     (visible on L1)
+                                   │                           │
+
+Privacy Properties:
+✓ Nobody knows User A has 100 SOL (commitment is hash)
+✓ Nobody knows 50 SOL went from A → B (happens in TEE)
+✓ Nobody can link User A's deposit to User B's withdrawal
+✓ Only User B knows they received from someone (note decryption)
+✓ Even PER operator can't see balances (encrypted in TEE)
+```
+
+---
+
 ## Future todo table
 
 | Item                       | Status | Notes                                                                        |

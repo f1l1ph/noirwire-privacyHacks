@@ -928,6 +928,35 @@ Solana's BN254 syscalls (available since v1.16):
 - `sol_alt_bn128_group_op` - G1/G2 point operations (add, multiply, negate)
 - `sol_alt_bn128_pairing` - Pairing check for Groth16 verification
 
+### 4.2 Dependencies
+
+**Cargo.toml for ZK Verifier Program:**
+
+```toml
+[package]
+name = "zk-verifier"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anchor-lang = "0.32.1"
+solana-program = "2.0"
+
+# Big integer arithmetic for BN254 field operations
+num-bigint = "0.4"
+num-traits = "0.2"
+
+[dev-dependencies]
+anchor-test = "0.32.1"
+```
+
+**Why num-bigint?**
+- BN254 field modulus is 254 bits (larger than native u128)
+- Modular arithmetic requires proper handling of wraparound
+- Production safety: prevents subtle bugs in field operations
+
+### 4.3 Program Implementation
+
 ```rust
 // programs/zk_verifier/src/lib.rs
 
@@ -978,7 +1007,7 @@ pub struct VerifyProof<'info> {
 }
 ```
 
-### 4.2 Groth16 Core Implementation
+### 4.4 Groth16 Core Implementation
 
 ```rust
 // programs/zk_verifier/src/groth16.rs
@@ -1096,75 +1125,36 @@ fn alt_bn128_pairing(input: &[u8]) -> Result<Vec<u8>> {
 /// Negate G1 point (flip y-coordinate in Fp)
 /// For BN254: -P = (x, p - y) where p is the field modulus
 ///
-/// NOTE: Production implementation should use a big integer library:
-/// ```toml
-/// [dependencies]
-/// num-bigint = "0.4"
-/// num-traits = "0.2"
-/// ```
-///
-/// Example with num-bigint:
-/// ```rust
-/// use num_bigint::BigUint;
-/// use num_traits::Num;
-///
-/// fn negate_g1_bigint(point: &[u8; 64]) -> Result<[u8; 64]> {
-///     let p = BigUint::from_str_radix(
-///         "30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47",
-///         16
-///     ).unwrap();
-///
-///     let mut result = *point;
-///     let y = BigUint::from_bytes_be(&point[32..64]);
-///     let neg_y = (&p - y) % &p;
-///
-///     result[32..64].copy_from_slice(&neg_y.to_bytes_be());
-///     Ok(result)
-/// }
-/// ```
+/// **Production Implementation** using num-bigint for correct modular arithmetic
 fn negate_g1(point: &[u8; 64]) -> Result<[u8; 64]> {
+    use num_bigint::BigUint;
+    use num_traits::Num;
+
     // BN254 field modulus p
-    const P: [u8; 32] = [
-        0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29,
-        0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58, 0x5d,
-        0x97, 0x81, 0x6a, 0x91, 0x68, 0x71, 0xca, 0x8d,
-        0x3c, 0x20, 0x8c, 0x16, 0xd8, 0x7c, 0xfd, 0x47,
-    ];
+    // p = 21888242871839275222246405745257275088696311157297823662689037894645226208583
+    let p = BigUint::from_str_radix(
+        "30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47",
+        16
+    ).map_err(|_| error!(errors::VerifierError::Bn128Error))?;
 
     let mut result = *point;
-    // x stays the same (first 32 bytes)
-    // y = p - y (second 32 bytes)
-    let y = &point[32..64];
-    let neg_y = field_sub(&P, y);
-    result[32..64].copy_from_slice(&neg_y);
+
+    // x coordinate stays the same (first 32 bytes)
+    // Negate y coordinate: y' = p - y (second 32 bytes)
+    let y = BigUint::from_bytes_be(&point[32..64]);
+    let neg_y = (&p - y) % &p;
+
+    // Convert back to bytes (big-endian, padded to 32 bytes)
+    let neg_y_bytes = neg_y.to_bytes_be();
+    let padding = 32 - neg_y_bytes.len();
+    result[32..32+padding].fill(0);
+    result[32+padding..64].copy_from_slice(&neg_y_bytes);
 
     Ok(result)
 }
-
-/// Field subtraction in BN254 finite field
-/// IMPORTANT: This simplified implementation is for demonstration only.
-/// Production code MUST use a proper big integer library like num-bigint
-/// to ensure correct modular arithmetic.
-fn field_sub(a: &[u8; 32], b: &[u8]) -> [u8; 32] {
-    // WARNING: Simplified implementation - replace with num-bigint in production
-    let mut result = [0u8; 32];
-    let mut borrow: u16 = 0;
-
-    for i in (0..32).rev() {
-        let a_val = a[i] as u16;
-        let b_val = b[i] as u16;
-
-        let diff = a_val.wrapping_sub(b_val).wrapping_sub(borrow);
-
-        result[i] = (diff & 0xFF) as u8;
-        borrow = if diff > 255 { 1 } else { 0 };
-    }
-
-    result
-}
 ```
 
-### 4.3 Compute Budget Considerations
+### 4.5 Compute Budget Considerations
 
 ```rust
 // Groth16 verification costs on Solana (approximate)
@@ -1200,7 +1190,7 @@ pub fn estimate_verify_cu(public_input_count: usize) -> u32 {
 /// ```
 ```
 
-### 4.4 Compute Budget Benchmarking
+### 4.6 Compute Budget Benchmarking
 
 **IMPORTANT:** The estimates above are theoretical. Production deployments MUST run
 actual benchmarks to determine precise CU costs.
@@ -1768,6 +1758,214 @@ impl PerExecutionContext {
 
 ---
 
+## 7.5. Transaction Cost Estimates
+
+Understanding transaction costs is critical for production deployment and user experience planning.
+
+### Fee Structure on Solana
+
+Solana transactions have two cost components:
+
+1. **Base Transaction Fee**: ~5,000 lamports (0.000005 SOL) per signature
+2. **Compute Units (CU)**: Variable based on computational complexity
+   - Default limit: 200,000 CU per transaction
+   - Max requestable: 1,400,000 CU per transaction
+   - Priority fees: Optional, paid per CU for faster inclusion
+
+**Current SOL Price Context (January 2026):**
+- Assumes SOL = $100 USD (adjust based on actual market price)
+- 1 SOL = 1,000,000,000 lamports
+- 1 lamport = $0.0000001 USD at $100/SOL
+
+### Per-Transaction Cost Breakdown
+
+| Operation | Compute Units | Base Fee (lamports) | Priority Fee (est) | Rent (lamports) | Total Cost (lamports) | USD Cost (@$100/SOL) |
+|-----------|---------------|---------------------|--------------------|-----------------|-----------------------|----------------------|
+| **Deposit** | ~500,000 CU | 5,000 | 50,000 (10%) | 0 | ~55,000 | $0.0055 |
+| **Transfer (Private)** | ~600,000 CU | 5,000 | 60,000 (10%) | 0 | ~65,000 | $0.0065 |
+| **Withdraw** | ~550,000 CU | 5,000 | 55,000 (10%) | 14,000 (nullifier PDA) | ~74,000 | $0.0074 |
+| **Batch Settlement** | ~500,000 CU | 5,000 | 50,000 (10%) | 14,000 × N | ~55,000 + (14,000 × N) | Variable |
+| **Create Vault** | ~50,000 CU | 5,000 | 5,000 (10%) | ~2,000,000 (vault account) | ~2,010,000 | $0.201 |
+| **Vault Membership Update** | ~80,000 CU | 5,000 | 8,000 (10%) | 0 | ~13,000 | $0.0013 |
+
+**Notes:**
+- Priority fees are optional and market-dependent (10% shown as example)
+- Nullifier PDA rent: ~14,000 lamports per nullifier (refundable if closed)
+- Vault account rent: ~2M lamports (one-time, refundable if vault deleted)
+- Actual CU costs must be confirmed via on-chain benchmarking (section 4.6)
+
+### Batch Settlement Cost Scaling
+
+For N transactions settled in a batch:
+
+```
+Total Cost = Base Verification (~55,000) + (N × Nullifier Rent)
+           = 55,000 + (N × 14,000) lamports
+
+Examples:
+- 10 txs:  55,000 + 140,000 = 195,000 lamports ($0.0195)
+- 50 txs:  55,000 + 700,000 = 755,000 lamports ($0.0755)
+- 100 txs: 55,000 + 1,400,000 = 1,455,000 lamports ($0.1455)
+
+Cost per transaction (amortized):
+- 10 txs:  19,500 lamports/tx ($0.00195/tx)
+- 50 txs:  15,100 lamports/tx ($0.00151/tx)
+- 100 txs: 14,550 lamports/tx ($0.00146/tx)
+```
+
+**Batch settlement becomes more cost-efficient at higher transaction counts.**
+
+### Account Rent Costs
+
+Solana requires rent exemption for persistent accounts:
+
+| Account Type | Size (bytes) | Rent (lamports) | Rent (USD @$100/SOL) | Refundable? |
+|--------------|--------------|-----------------|----------------------|-------------|
+| **PoolState** | ~1,400 | ~10,000,000 | $1.00 | Yes (admin only) |
+| **NullifierEntry** | 49 | ~14,000 | $0.0014 | Yes (via close instruction) |
+| **VerificationKey** | ~1,200 | ~8,500,000 | $0.85 | Yes (admin only) |
+| **Vault** | ~250 | ~2,000,000 | $0.20 | Yes (vault owner) |
+
+**Rent Recovery Strategy:**
+- Nullifier accounts can be closed after sufficient finality (e.g., 1000 blocks)
+- Implement nullifier cleanup worker to recover rent periodically
+- Estimated recovery: 90% of nullifier rent after 1 week
+
+### Cost Comparison with Other Solutions
+
+| Platform | Private Transfer Cost | Settlement Time | Notes |
+|----------|----------------------|-----------------|-------|
+| **NoirWire (ours)** | $0.0065 | ~2-10 seconds (PER) + batch settlement | Fast UX, batch amortization |
+| **Tornado Cash (ETH)** | $5-50 | 12 seconds | High gas fees on Ethereum L1 |
+| **Aztec Connect (ETH)** | $2-20 | 12 seconds | L2 rollup, batch proving |
+| **Railgun (ETH)** | $3-30 | 12 seconds | Private DeFi, high complexity |
+| **Zcash** | $0.001 | ~75 seconds | Dedicated privacy chain |
+
+**NoirWire Advantage:**
+- 100-1000x cheaper than Ethereum privacy solutions
+- Comparable to Zcash while maintaining Solana composability
+- Sub-second UX via PER, cost-efficient batch settlement
+
+### Cost Optimization Strategies
+
+#### 1. Batch Aggregation
+Accumulate transactions in PER before settling to L1:
+```
+Strategy: Wait for 50+ transactions before settlement
+- Individual tx cost: $0.0065 → $0.00151 (76% savings)
+- Tradeoff: Longer settlement delay (minutes instead of seconds)
+```
+
+#### 2. Nullifier Cleanup
+Implement automatic cleanup of old nullifier PDAs:
+```rust
+// Close nullifier after 1000 blocks (~400 seconds)
+pub fn cleanup_nullifier(ctx: Context<CleanupNullifier>) -> Result<()> {
+    let current_slot = Clock::get()?.slot;
+    let nullifier_slot = ctx.accounts.nullifier.slot;
+
+    require!(
+        current_slot - nullifier_slot > 1000,
+        PoolError::NullifierTooRecent
+    );
+
+    // Close account, rent refunded to original payer
+    Ok(())
+}
+```
+Estimated savings: ~14,000 lamports per nullifier ($0.0014)
+
+#### 3. Priority Fee Management
+Dynamic priority fees based on network congestion:
+```typescript
+// Query recent priority fees
+const recentFees = await connection.getRecentPrioritizationFees();
+const medianFee = recentFees.sort()[Math.floor(recentFees.length / 2)];
+
+// Set dynamic priority
+const computeBudgetIx = ComputeBudgetProgram.setComputeUnitPrice({
+  microLamports: Math.min(medianFee.prioritizationFee, 100_000)
+});
+```
+
+#### 4. Transaction Batching (Versioned Transactions)
+Use Solana's versioned transactions to pack multiple operations:
+```typescript
+// Single transaction: deposit + transfer
+const tx = new VersionedTransaction(
+  new Message({
+    recentBlockhash,
+    instructions: [depositIx, transferIx],
+  })
+);
+```
+Savings: 1 base fee instead of 2 (~5,000 lamports)
+
+### Monthly Cost Projections
+
+**Small Scale (100 users, 1000 txs/month):**
+```
+User costs:
+- Average tx cost: $0.0065 × 1000 = $6.50/month
+
+Operator costs:
+- Batch settlements: 20 batches × $0.05 = $1.00
+- Infrastructure (Railway + Supabase): $20/month
+- RPC costs: ~$10/month
+Total operator: ~$31/month
+```
+
+**Medium Scale (1000 users, 10,000 txs/month):**
+```
+User costs:
+- Average tx cost: $0.0030 × 10,000 = $30/month (with batching)
+
+Operator costs:
+- Batch settlements: 100 batches × $0.05 = $5.00
+- Infrastructure: $50/month
+- RPC costs: ~$50/month
+Total operator: ~$105/month
+```
+
+**Large Scale (10,000 users, 100,000 txs/month):**
+```
+User costs:
+- Average tx cost: $0.0015 × 100,000 = $150/month (optimized batching)
+
+Operator costs:
+- Batch settlements: 500 batches × $0.05 = $25.00
+- Infrastructure: $200/month
+- RPC costs: ~$200/month
+Total operator: ~$425/month
+```
+
+### Production Recommendations
+
+1. **Always set compute budget explicitly:**
+   ```typescript
+   ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 })
+   ```
+
+2. **Monitor and optimize priority fees:**
+   - Low congestion: 0 micro-lamports (no priority)
+   - Medium: 10,000 micro-lamports
+   - High: 50,000+ micro-lamports
+
+3. **Implement rent recovery:**
+   - Close nullifier PDAs after 7 days
+   - Estimated annual savings: $500-5000 depending on volume
+
+4. **Batch settlement strategy:**
+   - Target: 50-100 txs per batch for optimal cost/latency balance
+   - Monitor gas prices and adjust batch size dynamically
+
+5. **Reserve budget for upgrades:**
+   - Circuit updates: ~$50 (deploy new verifier)
+   - Program upgrades: ~$5-10 per program
+   - VK updates: ~$0.85 per circuit type
+
+---
+
 ## 8. Security Considerations
 
 ### 8.1 Attack Vectors & Mitigations
@@ -1824,6 +2022,461 @@ pub struct Timelock {
     pub execution_delay: i64,  // e.g., 24 hours
 }
 ```
+
+---
+
+## 9. Upgrade & Migration Strategy
+
+Production systems must support upgrades without disrupting user funds or breaking compatibility.
+
+### 9.1 Program Upgrade Model
+
+Solana programs are upgradeable through the program loader:
+
+```rust
+// Programs are deployed with upgrade authority
+// Authority can deploy new bytecode while preserving program ID
+
+Program ID: NwirePoo1XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+Upgrade Authority: <multisig_address>
+```
+
+**Upgrade Process:**
+1. Deploy new program binary to a buffer account
+2. Verify new binary in staging environment
+3. Submit upgrade transaction (requires upgrade authority signature)
+4. New code takes effect immediately
+
+### 9.2 Account Structure Versioning
+
+Use version fields in account structs to support migrations:
+
+```rust
+#[account]
+pub struct PoolState {
+    /// Account version for migration support
+    pub version: u8,
+
+    pub authority: Pubkey,
+    pub commitment_root: [u8; 32],
+    // ... rest of fields ...
+
+    /// Reserved space for future fields
+    pub _reserved: [u8; 256],
+}
+
+impl PoolState {
+    pub const CURRENT_VERSION: u8 = 1;
+
+    /// Migrate account from old version to current
+    pub fn migrate(&mut self) -> Result<()> {
+        match self.version {
+            0 => {
+                // V0 -> V1 migration
+                // Example: Add new field with default value
+                self.version = 1;
+            }
+            1 => {
+                // Already current version
+            }
+            _ => {
+                return Err(PoolError::UnsupportedVersion.into());
+            }
+        }
+        Ok(())
+    }
+}
+```
+
+### 9.3 Circuit Migration Strategy
+
+ZK circuits are immutable once deployed (verification key is fixed). Upgrading circuits requires parallel deployment:
+
+#### Scenario: Upgrading Transfer Circuit
+
+```
+GOAL: Deploy new transfer circuit with improved efficiency
+
+STRATEGY: Parallel Circuit Deployment
+
+Step 1: Deploy New Circuit
+┌────────────────────────────────────────┐
+│ Shielded Pool Program                  │
+├────────────────────────────────────────┤
+│ Circuit Registry:                      │
+│  • transfer_v1 → VK_hash_abc123       │ ← Existing
+│  • transfer_v2 → VK_hash_def456       │ ← New (deployed)
+└────────────────────────────────────────┘
+
+Step 2: Dual Support Period (30 days)
+- Both circuits accept new proofs
+- PER generates proofs using transfer_v2
+- Old transactions can still settle with transfer_v1
+
+Step 3: Deprecation
+- After 30 days, disable transfer_v1
+- All new transactions use transfer_v2
+- Historical state remains valid
+```
+
+#### Implementation
+
+```rust
+// State tracks multiple circuit versions
+#[account]
+pub struct CircuitRegistry {
+    pub circuits: Vec<CircuitVersion>,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct CircuitVersion {
+    pub circuit_id: [u8; 32],  // e.g., hash("transfer_v1")
+    pub vk_hash: [u8; 32],
+    pub deployed_at: i64,
+    pub deprecated: bool,       // Can be disabled after migration
+}
+
+// Verify instruction accepts circuit_id
+pub fn verify_with_circuit(
+    ctx: Context<Verify>,
+    circuit_id: [u8; 32],
+    proof: ProofData,
+    public_inputs: Vec<[u8; 32]>,
+) -> Result<()> {
+    let registry = &ctx.accounts.circuit_registry;
+
+    let circuit = registry.circuits.iter()
+        .find(|c| c.circuit_id == circuit_id && !c.deprecated)
+        .ok_or(PoolError::CircuitNotFound)?;
+
+    // Verify using the specified circuit
+    verify_proof(&circuit.vk_hash, proof, public_inputs)?;
+
+    Ok(())
+}
+```
+
+### 9.4 State Migration Scenarios
+
+#### Scenario 1: Add New Field to PoolState
+
+```rust
+// OLD (V1):
+pub struct PoolState {
+    pub version: u8,  // = 1
+    pub authority: Pubkey,
+    pub commitment_root: [u8; 32],
+    pub total_shielded: u64,
+    pub _reserved: [u8; 256],
+}
+
+// NEW (V2): Add fee tracking
+pub struct PoolState {
+    pub version: u8,  // = 2
+    pub authority: Pubkey,
+    pub commitment_root: [u8; 32],
+    pub total_shielded: u64,
+
+    // NEW FIELD (uses reserved space)
+    pub total_fees_collected: u64,
+
+    pub _reserved: [u8; 248],  // Reduced by 8 bytes
+}
+
+// Migration function
+pub fn migrate_to_v2(ctx: Context<MigratePool>) -> Result<()> {
+    let pool = &mut ctx.accounts.pool;
+
+    require!(pool.version == 1, PoolError::AlreadyMigrated);
+
+    // Initialize new field
+    pool.total_fees_collected = 0;
+
+    // Update version
+    pool.version = 2;
+
+    emit!(PoolMigratedEvent {
+        from_version: 1,
+        to_version: 2,
+    });
+
+    Ok(())
+}
+```
+
+**Migration Deployment:**
+```bash
+# 1. Deploy new program version
+anchor build
+solana program deploy target/deploy/shielded_pool.so
+
+# 2. Migrate pool account
+anchor run migrate-pool --provider.cluster mainnet
+```
+
+#### Scenario 2: Historical Roots Size Change
+
+```rust
+// Current: 32 historical roots
+pub const HISTORICAL_ROOTS_SIZE: usize = 32;
+
+// Want to increase to 64 for longer spending windows
+
+// PROBLEM: Can't change account size of existing accounts
+
+// SOLUTION: Create migration path
+
+// Step 1: Add new field, keep old field
+pub struct PoolState {
+    pub version: u8,  // = 3
+
+    // Old field (deprecated but kept for compatibility)
+    pub historical_roots_v1: [[u8; 32]; 32],
+
+    // New field (uses reserved space)
+    pub historical_roots_v2: [[u8; 32]; 64],
+    pub using_v2_roots: bool,
+
+    // ...
+}
+
+// Step 2: Migration function
+pub fn migrate_roots_to_v2(ctx: Context<MigratePool>) -> Result<()> {
+    let pool = &mut ctx.accounts.pool;
+
+    // Copy old roots to new array
+    for (i, root) in pool.historical_roots_v1.iter().enumerate() {
+        pool.historical_roots_v2[i] = *root;
+    }
+
+    // Fill remaining with zeros
+    for i in 32..64 {
+        pool.historical_roots_v2[i] = [0u8; 32];
+    }
+
+    pool.using_v2_roots = true;
+    pool.version = 3;
+
+    Ok(())
+}
+```
+
+#### Scenario 3: Change Nullifier Storage (Breaking Change)
+
+```
+CURRENT: Individual PDA per nullifier
+PROBLEM: High rent costs, slow lookups
+
+PROPOSED: Bitmap-based nullifier set
+
+This is a BREAKING CHANGE requiring full migration:
+
+Step 1: Deploy New Pool V2
+├── Deploy new program: shielded_pool_v2
+├── New pool PDA with bitmap storage
+└── Keep old pool active
+
+Step 2: Migration Period (60 days)
+├── Users can withdraw from old pool
+├── Users re-deposit to new pool
+└── Both pools operational
+
+Step 3: Old Pool Sunset
+├── After 60 days, disable new deposits to V1
+├── Withdrawals still allowed
+└── Eventually close V1 pool
+```
+
+**User Migration Tool:**
+```typescript
+// SDK tool to migrate user funds
+async function migrateToV2(
+  oldPool: PublicKey,
+  newPool: PublicKey,
+  userWallet: Keypair
+) {
+  // 1. Withdraw all from V1
+  const commitments = await fetchUserCommitments(oldPool, userWallet);
+
+  for (const commitment of commitments) {
+    await withdraw(oldPool, commitment, userWallet);
+  }
+
+  // 2. Re-deposit to V2
+  const balance = await getBalance(userWallet);
+  await deposit(newPool, balance, userWallet);
+
+  console.log("Migration complete!");
+}
+```
+
+### 9.5 Rollback Strategy
+
+For critical bugs discovered post-deployment:
+
+```rust
+// Emergency rollback mechanism
+
+#[account]
+pub struct PoolState {
+    // ...existing fields...
+
+    /// Emergency pause flag
+    pub paused: bool,
+
+    /// Rollback root (last known good state)
+    pub rollback_root: Option<[u8; 32]>,
+}
+
+/// Emergency pause (admin only)
+pub fn emergency_pause(ctx: Context<AdminAction>) -> Result<()> {
+    let pool = &mut ctx.accounts.pool;
+
+    // Record current root as potential rollback point
+    pool.rollback_root = Some(pool.commitment_root);
+
+    pool.paused = true;
+
+    emit!(EmergencyPauseEvent {
+        paused_at: Clock::get()?.unix_timestamp,
+        root_at_pause: pool.commitment_root,
+    });
+
+    Ok(())
+}
+
+/// Rollback to previous root (only if paused)
+pub fn rollback_to_checkpoint(ctx: Context<AdminAction>) -> Result<()> {
+    let pool = &mut ctx.accounts.pool;
+
+    require!(pool.paused, PoolError::NotPaused);
+
+    if let Some(rollback_root) = pool.rollback_root {
+        pool.commitment_root = rollback_root;
+        pool.rollback_root = None;
+
+        emit!(RollbackEvent {
+            new_root: rollback_root,
+        });
+    }
+
+    Ok(())
+}
+```
+
+### 9.6 Migration Checklist
+
+#### Pre-Migration
+- [ ] **Test migration on devnet** with production data clone
+- [ ] **Benchmark new code** (CU usage, latency)
+- [ ] **Security audit** of changed code
+- [ ] **Document breaking changes** in changelog
+- [ ] **Prepare rollback plan**
+- [ ] **Set up monitoring** for new version
+- [ ] **Notify users** (if UX changes)
+
+#### During Migration
+- [ ] **Monitor L1 closely** during upgrade
+- [ ] **Have admin keys ready** for emergency pause
+- [ ] **Watch for errors** in first 1000 transactions
+- [ ] **Verify state consistency** after upgrade
+- [ ] **Check all CPI integrations** still work
+
+#### Post-Migration
+- [ ] **Monitor for 24 hours** continuously
+- [ ] **Verify all user balances** unchanged
+- [ ] **Run state verification** against snapshots
+- [ ] **Document any issues** encountered
+- [ ] **Update SDK/docs** if API changed
+
+### 9.7 Versioning Strategy
+
+```
+Version Format: MAJOR.MINOR.PATCH
+
+MAJOR: Breaking changes (new pool deployment required)
+MINOR: New features (backward compatible)
+PATCH: Bug fixes (no state changes)
+
+Examples:
+- 1.0.0 → 1.0.1: Bug fix in proof verification
+- 1.0.1 → 1.1.0: Add new circuit type (transfer_v2)
+- 1.1.0 → 2.0.0: Change account structure (requires migration)
+```
+
+**On-Chain Version Tracking:**
+```rust
+pub const PROGRAM_VERSION: &str = "1.2.3";
+
+pub fn get_version(ctx: Context<GetVersion>) -> Result<String> {
+    Ok(PROGRAM_VERSION.to_string())
+}
+```
+
+### 9.8 Migration Timeline Example
+
+```
+Week 0: Planning
+├── Identify need for circuit upgrade
+├── Design new circuit
+└── Plan migration strategy
+
+Week 1-2: Development
+├── Implement new circuit in Noir
+├── Test on devnet
+└── Security audit
+
+Week 3: Staging
+├── Deploy to testnet
+├── Invite beta testers
+└── Monitor for issues
+
+Week 4: Production Deployment
+├── Day 1: Deploy new circuit (parallel with old)
+├── Day 2-7: Monitor both circuits
+├── Day 8: Make new circuit default in PER
+└── Day 30: Deprecate old circuit
+
+Week 5-6: Monitoring
+├── Verify all migrations successful
+├── Check state consistency
+└── Document lessons learned
+```
+
+### 9.9 Communication Plan
+
+**User Notifications:**
+```typescript
+// Notify users of upcoming migration
+interface MigrationNotice {
+  version: string;
+  scheduled_date: string;
+  breaking_changes: boolean;
+  action_required: boolean;
+  details_url: string;
+}
+
+// Example notice
+const notice: MigrationNotice = {
+  version: "2.0.0",
+  scheduled_date: "2026-02-15T00:00:00Z",
+  breaking_changes: true,
+  action_required: true,
+  details_url: "https://docs.noirwire.com/migration/v2",
+};
+
+// Broadcast via:
+// - API announcements endpoint
+// - Email to registered users
+// - Discord/Twitter
+// - In-app banner
+```
+
+**Migration Support:**
+- Create migration guide documentation
+- Provide CLI tool for automated migration
+- Set up support channel during migration window
+- Monitor and respond to user issues in real-time
 
 ---
 
