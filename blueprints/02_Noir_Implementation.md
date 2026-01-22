@@ -41,21 +41,57 @@ cd noirwire_circuits
 name = "noirwire_circuits"
 type = "lib"
 authors = ["NoirWire Team"]
-compiler_version = ">=1.0.0"
+compiler_version = ">=1.0.0-beta.18"
+# As of Jan 2026: Latest is v1.0.0-beta.18
 
 [dependencies]
+# ✅ Poseidon2 is NOW IN STDLIB - no external dependency needed!
+# Use: use std::hash::poseidon2::Poseidon2;
+
 # ZK-Kit Merkle Trees
+# Verify compatibility with your Noir version before use
 merkle_trees = {
     git = "https://github.com/privacy-scaling-explorations/zk-kit.noir",
     tag = "merkle-trees-v0.0.1",
     directory = "packages/merkle-trees"
 }
-
-# Poseidon library (standalone)
-poseidon = {
-    git = "https://github.com/noir-lang/poseidon"
-}
 ```
+
+> **Noir Version (Updated Jan 2026):**
+>
+> - Current: **v1.0.0-beta.18** (beta, but production-ready)
+> - Poseidon2 hash is **built into stdlib** (use `std::hash::poseidon2::Poseidon2`)
+> - Check [github.com/noir-lang/noir/releases](https://github.com/noir-lang/noir/releases) for updates
+
+> **Poseidon2 Hash Usage:**
+>
+> ```noir
+> use std::hash::poseidon2::Poseidon2;
+>
+> // Hash fixed-size array:
+> fn compute_hash(inputs: [Field; 4]) -> Field {
+>     Poseidon2::hash(inputs, 4)  // (input, message_size)
+> }
+>
+> // Hash variable-length inputs:
+> use std::hash::Poseidon2Hasher;
+> fn hash_values(a: Field, b: Field, c: Field) -> Field {
+>     let mut hasher = Poseidon2Hasher::default();
+>     hasher.write(a);
+>     hasher.write(b);
+>     hasher.write(c);
+>     hasher.finish()
+> }
+> ```
+>
+> **Client-side hashing MUST use `@aztec/bb.js`** for compatibility with Barretenberg proofs.
+> The `poseidon2Hash()` function produces identical results to Noir's stdlib Poseidon2.
+>
+> **References:**
+>
+> - [Noir Poseidon2 stdlib](https://github.com/noir-lang/noir/blob/master/noir_stdlib/src/hash/poseidon2.nr)
+> - [Barretenberg TS API](https://github.com/AztecProtocol/barretenberg/tree/master/ts)
+> - [Client SDK Implementation](./31_Client_SDK.md#poseidon-hashing)
 
 ### Directory Structure
 
@@ -112,8 +148,10 @@ noirwire_circuits/
 // src/primitives/types.nr
 
 /// Tree configuration
-global TREE_DEPTH: u32 = 32;          // 2^32 leaves
-global NULLIFIER_TREE_DEPTH: u32 = 32;
+/// Using 24 levels = 2^24 (~16M) possible leaves
+/// This provides sufficient capacity while keeping proofs manageable
+global TREE_DEPTH: u32 = 24;
+global NULLIFIER_TREE_DEPTH: u32 = 24;
 global VAULT_MEMBERS_DEPTH: u32 = 16; // 2^16 = 65k members max
 
 /// Balance stored in the shielded pool
@@ -167,7 +205,7 @@ pub struct VaultConfig {
 ```noir
 // src/primitives/commitment.nr
 
-use dep::std::hash::poseidon2::Poseidon2::hash as poseidon2;
+use std::hash::poseidon2::Poseidon2;
 use crate::primitives::types::Balance;
 
 /// Domain separator for commitments
@@ -176,9 +214,8 @@ global COMMITMENT_DOMAIN: Field = 0x01;
 /// Compute a balance commitment
 /// commitment = H(domain || owner || amount || salt || vault_id)
 pub fn compute_commitment(balance: Balance) -> Field {
-    poseidon2(
-        [COMMITMENT_DOMAIN, balance.owner, balance.amount, balance.salt, balance.vault_id],
-        5
+    Poseidon2::hash(
+        [COMMITMENT_DOMAIN, balance.owner, balance.amount, balance.salt, balance.vault_id], 5
     )
 }
 
@@ -189,13 +226,13 @@ pub fn compute_commitment_explicit(
     salt: Field,
     vault_id: Field
 ) -> Field {
-    poseidon2([COMMITMENT_DOMAIN, owner, amount, salt, vault_id], 5)
+    Poseidon2::hash([COMMITMENT_DOMAIN, owner, amount, salt, vault_id], 5)
 }
 
 /// Derive owner identifier from secret key
 /// owner = H(secret_key)
 pub fn derive_owner(secret_key: Field) -> Field {
-    poseidon2([secret_key], 1)
+    Poseidon2::hash([secret_key], 1)
 }
 
 /// Check if two commitments match
@@ -224,7 +261,7 @@ fn test_commitment_different_salt() {
 ```noir
 // src/primitives/nullifier.nr
 
-use dep::std::hash::poseidon2::Poseidon2::hash as poseidon2;
+use std::hash::poseidon2::Poseidon2;
 
 /// Domain separator for nullifiers
 global NULLIFIER_DOMAIN: Field = 0x02;
@@ -236,7 +273,7 @@ pub fn compute_nullifier(
     secret_key: Field,
     nonce: Field
 ) -> Field {
-    poseidon2([NULLIFIER_DOMAIN, commitment, secret_key, nonce], 4)
+    Poseidon2::hash([NULLIFIER_DOMAIN, commitment, secret_key, nonce], 4)
 }
 
 /// Verify a nullifier is correct
@@ -270,12 +307,12 @@ fn test_nullifier_different_nonce() {
 ```noir
 // src/primitives/merkle.nr
 
-use dep::std::hash::poseidon2::Poseidon2::hash as poseidon2;
+use std::hash::poseidon2::Poseidon2;
 use crate::primitives::types::{TREE_DEPTH, MerkleProof};
 
 /// Compute the hash of two children
 fn hash_pair(left: Field, right: Field) -> Field {
-    poseidon2([left, right], 2)
+    Poseidon2::hash([left, right], 2)
 }
 
 /// Verify a Merkle inclusion proof
@@ -639,7 +676,7 @@ fn main(
 ```noir
 // circuits/batch_aggregator/src/main.nr
 
-use dep::std::verify_proof;
+use std::verify_proof;
 
 /// Verification key hash type
 type VkHash = Field;
@@ -981,7 +1018,7 @@ fn safe_subtract(a: Field, b: Field) -> Field {
 // 3. Batch hash operations
 fn batch_hash_4(inputs: [Field; 4]) -> Field {
     // More efficient than 4 separate hashes
-    poseidon2(inputs, 4)
+    Poseidon2::hash(inputs, 4)
 }
 
 // 4. Use constants for repeated values
@@ -1051,7 +1088,7 @@ jobs:
 
 ```noir
 // Use println for debugging (removed in production)
-use dep::std::println;
+use std::println;
 
 fn debug_transfer(sender_amount: Field, transfer_amount: Field) {
     println(f"Sender amount: {sender_amount}");

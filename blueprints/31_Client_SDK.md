@@ -83,8 +83,8 @@ NoirWire uses a **two-wallet architecture** for optimal privacy and usability:
 
 **Getting Your NoirWire Wallet:**
 
-1. **Create New** - Generate random keys with 12/24-word mnemonic backup
-2. **Import from Mnemonic** - Restore from existing 12/24-word recovery phrase
+1. **Create New** - Generate random keys with 24-word mnemonic backup (256-bit entropy)
+2. **Import from Mnemonic** - Restore from existing 12 or 24-word recovery phrase
 3. **Import from Backup** - Restore from encrypted JSON backup file
 
 ### SDK Layers
@@ -125,7 +125,7 @@ NoirWire uses a **two-wallet architecture** for optimal privacy and usability:
 │                                                                 │
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │            CRYPTO UTILITIES                              │  │
-│  │  • Poseidon2 hash                                        │  │
+│  │  • Poseidon hash                                         │  │
 │  │  • Commitment computation                                │  │
 │  │  • Nullifier generation                                  │  │
 │  └──────────────────────────────────────────────────────────┘  │
@@ -149,6 +149,45 @@ NoirWire uses a **two-wallet architecture** for optimal privacy and usability:
 | **Error Handling**  | Descriptive errors, retry logic           |
 | **Extensible**      | Plugin architecture for custom features   |
 | **Well Documented** | JSDoc/Rustdoc for all public APIs         |
+
+### Critical: Cryptographic Library Choice
+
+> ⚠️ **CRITICAL - Poseidon Hash Compatibility:**
+>
+> Since NoirWire uses **Noir** as the ZK language, we must use **`@aztec/bb.js`** (Barretenberg) for client-side Poseidon hashing.
+>
+> **Why not circomlibjs?**
+>
+> - `circomlibjs` is designed for **Circom** circuits
+> - It uses different Poseidon parameters (round constants, MDS matrix)
+> - Hashes computed with circomlibjs **will not match** Noir circuit hashes
+> - This would cause all proof verification to fail!
+>
+> **Why @aztec/bb.js?**
+>
+> - Noir uses **Barretenberg** as its default proving backend
+> - `bb.js` contains the exact same Poseidon2 implementation used in Noir circuits
+> - Guaranteed compatibility between client-side and circuit computations
+>
+> **⚠️ VERIFICATION REQUIRED BEFORE IMPLEMENTATION:**
+>
+> 1. **Check API availability**: Confirm `@aztec/bb.js` exposes `poseidon2Hash()` method
+>    - Check latest docs: [Barretenberg TS](https://github.com/AztecProtocol/barretenberg/tree/master/ts)
+>    - If unavailable, use Barretenberg C++ API via WASM directly
+>
+> 2. **Test hash compatibility**: Write integration test:
+>    ```typescript
+>    // Test that circuit and JS produce same hash
+>    const input = [1, 2, 3, 4, 5];
+>    const circuitHash = getHashFromNoirProof(input);
+>    const jsHash = await bb.poseidon2Hash(input);
+>    assert(circuitHash === jsHash, "Hash mismatch!");
+>    ```
+>
+> 3. **Fallback option**: If `bb.js` API is insufficient, consider:
+>    - Using Barretenberg C++ library directly via Node.js native bindings
+>    - Using `light-poseidon` (Rust crate) compiled to WASM for browser
+>    - Generating reference hash table from circuits for common operations
 
 ---
 
@@ -189,7 +228,7 @@ noirwire-sdk/
 │   │   └── types.ts                # API types
 │   │
 │   ├── crypto/
-│   │   ├── poseidon.ts             # Poseidon2 hash
+│   │   ├── poseidon.ts             # Poseidon hash
 │   │   ├── commitments.ts          # Commitment utils
 │   │   └── nullifiers.ts           # Nullifier utils
 │   │
@@ -237,6 +276,7 @@ noirwire-sdk/
     "@solana/wallet-adapter-base": "^0.9.23",
     "@solana/wallet-adapter-react": "^0.15.35",
     "@solana/wallet-adapter-wallets": "^0.19.32",
+    "@aztec/bb.js": "^2.1.0",
     "axios": "^1.6.0",
     "bs58": "^5.0.0",
     "bip39": "^3.1.0",
@@ -333,7 +373,7 @@ export class NoirWireClient {
    */
   createWallet(withMnemonic: boolean = true): Wallet {
     if (withMnemonic) {
-      const mnemonic = bip39.generateMnemonic(128); // 12 words
+      const mnemonic = bip39.generateMnemonic(256); // 24 words (256 bits)
       return Wallet.fromMnemonic(mnemonic, this.api);
     } else {
       const keypair = Keypair.generate();
@@ -427,6 +467,36 @@ export class NoirWireClient {
   vaults(): VaultManager {
     return new VaultManager(this.api);
   }
+}
+```
+
+> **💡 VaultManager Implementation:**
+>
+> The vault system follows the unified model: **"Solo user = vault of 1 member"**
+>
+> Complete vault implementation is documented across:
+> - **[03_Vault_Circuits.md](./03_Vault_Circuits.md)** - ZK circuits for balance conservation
+> - **[11_Vault_Program.md](./11_Vault_Program.md)** - Solana program + PER integration
+> - **[Vault_research.md](./Vault_research.md)** - Architecture and flows
+>
+> **Key Concepts:**
+> - Vaults use PER Permission Program (not ZK membership proofs)
+> - Balance structure: `{ owner, amount, vault_id: Option<[u8; 32]> }`
+> - Roles: Viewer, Member, Admin (permission-based, not cryptographic)
+> - Privacy: Vault members see each other, outsiders see nothing
+>
+> **VaultManager Methods:**
+> - `createVault(name)` - Create vault + permission group via PER
+> - `addMember(vault_id, member, role)` - Add member to permission group
+> - `removeMember(vault_id, member)` - Remove from permission group
+> - `depositToVault(vault_id, amount)` - Deposit with vault_id tag
+> - `getVaultBalances(vault_id)` - Query all member balances (if authorized)
+
+```typescript
+// Continuing NoirWire class...
+
+export class NoirWire {
+  // ... (previous methods)
 
   /**
    * Subscribe to real-time events
@@ -794,37 +864,85 @@ export class TransferBuilder {
 // src/crypto/poseidon.ts
 
 /**
- * Poseidon2 hash implementation
+ * Poseidon hash implementation using Barretenberg (bb.js)
  *
- * NOTE: This is a placeholder. In production, use a proper Poseidon2
- * implementation like circomlibjs or poseidon-lite
+ * IMPORTANT: We use @aztec/bb.js because Noir uses Barretenberg as its
+ * proving backend. This ensures the Poseidon hash computed client-side
+ * matches exactly what the Noir circuits compute.
+ *
+ * DO NOT use circomlibjs - it's designed for Circom circuits and uses
+ * different Poseidon parameters that won't match Noir's implementation.
  */
 
-import { createHash } from "crypto";
+import { Barretenberg, Fr } from "@aztec/bb.js";
+
+let barretenberg: Barretenberg | null = null;
 
 /**
- * Compute Poseidon2 hash
- * @param inputs - Array of field elements (as Uint8Array)
- * @returns Hash result (32 bytes)
+ * Initialize Barretenberg (async, call once at startup)
+ * This loads the WASM module for cryptographic operations
  */
-export function poseidon2(inputs: Uint8Array[]): Uint8Array {
-  // PLACEHOLDER: Replace with actual Poseidon2 implementation
-  // For production, use: https://github.com/iden3/circomlibjs
-
-  // Temporary: Use SHA256 as placeholder
-  const hash = createHash("sha256");
-  for (const input of inputs) {
-    hash.update(input);
+export async function initCrypto(): Promise<void> {
+  if (!barretenberg) {
+    barretenberg = await Barretenberg.new({ threads: 1 });
   }
-  return new Uint8Array(hash.digest());
 }
 
 /**
- * Compute Poseidon2 hash from field elements
- * @param fields - Array of 32-byte field elements
+ * Get the Barretenberg instance (throws if not initialized)
  */
-export function poseidon2Fields(...fields: Uint8Array[]): Uint8Array {
-  return poseidon2(fields);
+function getBb(): Barretenberg {
+  if (!barretenberg) {
+    throw new Error("Crypto not initialized. Call initCrypto() first.");
+  }
+  return barretenberg;
+}
+
+/**
+ * Compute Poseidon2 hash (BN254) - matches Noir's implementation
+ * @param inputs - Array of field elements (as Fr or Buffer)
+ * @returns Hash result as Fr (can convert to 32 bytes)
+ */
+export async function poseidon2Hash(inputs: Fr[]): Promise<Fr> {
+  const bb = getBb();
+  return bb.poseidon2Hash(inputs);
+}
+
+/**
+ * Convert Uint8Array to Fr field element
+ */
+export function toFr(bytes: Uint8Array): Fr {
+  return Fr.fromBuffer(Buffer.from(bytes));
+}
+
+/**
+ * Convert Fr to Uint8Array (32 bytes)
+ */
+export function fromFr(fr: Fr): Uint8Array {
+  return new Uint8Array(fr.toBuffer());
+}
+
+/**
+ * Compute Poseidon2 hash from raw byte arrays
+ * @param fields - Array of 32-byte field elements
+ * @returns Hash result (32 bytes)
+ */
+export async function poseidon2Fields(
+  ...fields: Uint8Array[]
+): Promise<Uint8Array> {
+  const frInputs = fields.map(toFr);
+  const result = await poseidon2Hash(frInputs);
+  return fromFr(result);
+}
+
+/**
+ * Cleanup Barretenberg instance (call on app shutdown)
+ */
+export async function destroyCrypto(): Promise<void> {
+  if (barretenberg) {
+    await barretenberg.destroy();
+    barretenberg = null;
+  }
 }
 ```
 
@@ -833,12 +951,20 @@ export function poseidon2Fields(...fields: Uint8Array[]): Uint8Array {
 
 import { poseidon2Fields } from "./poseidon";
 
-const COMMITMENT_DOMAIN = new Uint8Array([0x01]);
+// Domain separators (32-byte field elements with domain tag in first byte)
+const COMMITMENT_DOMAIN = new Uint8Array(32);
+COMMITMENT_DOMAIN[0] = 0x01;
+
+const NULLIFIER_DOMAIN = new Uint8Array(32);
+NULLIFIER_DOMAIN[0] = 0x02;
 
 /**
- * Derive public key from secret key using Poseidon
+ * Derive public key from secret key using Poseidon2
+ * pubkey = H(secret_key)
  */
-export function derivePublicKey(secretKey: Uint8Array): Uint8Array {
+export async function derivePublicKey(
+  secretKey: Uint8Array,
+): Promise<Uint8Array> {
   return poseidon2Fields(secretKey);
 }
 
@@ -846,12 +972,12 @@ export function derivePublicKey(secretKey: Uint8Array): Uint8Array {
  * Compute commitment
  * commitment = H(domain || owner || amount || salt || vault_id)
  */
-export function computeCommitment(
+export async function computeCommitment(
   owner: Uint8Array,
   amount: number,
   salt: Uint8Array,
   vaultId: Uint8Array,
-): Uint8Array {
+): Promise<Uint8Array> {
   const amountBytes = new Uint8Array(32);
   new DataView(amountBytes.buffer).setBigUint64(24, BigInt(amount), false);
 
@@ -862,13 +988,11 @@ export function computeCommitment(
  * Compute nullifier
  * nullifier = H(domain || commitment || secret || nonce)
  */
-export function computeNullifier(
+export async function computeNullifier(
   commitment: Uint8Array,
   secretKey: Uint8Array,
   nonce: Uint8Array,
-): Uint8Array {
-  const NULLIFIER_DOMAIN = new Uint8Array([0x02]);
-
+): Promise<Uint8Array> {
   return poseidon2Fields(NULLIFIER_DOMAIN, commitment, secretKey, nonce);
 }
 
@@ -1154,7 +1278,7 @@ function App() {
 
   // Step 2: Create or import NoirWire wallet (for private transfers)
   const handleCreateNoirWireWallet = () => {
-    const wallet = client.createWallet(true); // with 12-word mnemonic
+    const wallet = client.createWallet(true); // with 24-word mnemonic
     setNoirWireWallet(wallet);
 
     // IMPORTANT: Show mnemonic to user for backup
@@ -1255,7 +1379,7 @@ function App() {
               Create New Private Wallet
             </button>
             <button onClick={() => {
-              const mnemonic = prompt('Enter your 12-word recovery phrase:');
+              const mnemonic = prompt('Enter your 24-word recovery phrase:');
               if (mnemonic) handleImportNoirWireWallet(mnemonic);
             }}>
               Import from Recovery Phrase
@@ -1392,7 +1516,8 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 # Cryptography
-# TODO: Add Poseidon2 implementation
+# Use light-poseidon crate for BN254 Poseidon hash (matches Noir circuits)
+light-poseidon = "0.2"
 sha2 = "0.10"
 rand = "0.8"
 bip39 = "2.0"  # BIP39 mnemonic support
@@ -1576,7 +1701,7 @@ impl Wallet {
 
     /// Create a new wallet with BIP39 mnemonic
     pub fn new_with_mnemonic() -> Self {
-        let mut entropy = [0u8; 16]; // 128 bits = 12 words
+        let mut entropy = [0u8; 32]; // 256 bits = 24 words
         rand::thread_rng().fill_bytes(&mut entropy);
 
         let mnemonic = Mnemonic::from_entropy(&entropy).unwrap();
@@ -2054,16 +2179,16 @@ cargo publish
 
 ## Summary
 
-| Feature             | TypeScript                   | Rust                  |
-| ------------------- | ---------------------------- | --------------------- |
-| **Package Manager** | NPM                          | crates.io             |
-| **Async**           | async/await                  | tokio                 |
-| **HTTP Client**     | axios                        | reqwest               |
-| **WebSocket**       | native WebSocket             | tokio-tungstenite     |
-| **Crypto**          | circomlibjs (Poseidon2)      | Custom implementation |
-| **Mnemonic**        | bip39                        | bip39 crate           |
-| **Solana Wallet**   | @solana/wallet-adapter-react | N/A (CLI)             |
-| **Testing**         | Jest                         | cargo test            |
+| Feature             | TypeScript                   | Rust              |
+| ------------------- | ---------------------------- | ----------------- |
+| **Package Manager** | NPM                          | crates.io         |
+| **Async**           | async/await                  | tokio             |
+| **HTTP Client**     | axios                        | reqwest           |
+| **WebSocket**       | native WebSocket             | tokio-tungstenite |
+| **Crypto**          | @aztec/bb.js (Poseidon2)     | light-poseidon    |
+| **Mnemonic**        | bip39                        | bip39 crate       |
+| **Solana Wallet**   | @solana/wallet-adapter-react | N/A (CLI)         |
+| **Testing**         | Jest                         | cargo test        |
 
 ### Wallet Features
 
@@ -2084,7 +2209,8 @@ cargo publish
 - [Solana Web3.js](https://solana-labs.github.io/solana-web3.js/)
 - [Anchor Client TypeScript](https://www.anchor-lang.com/docs/clients/javascript)
 - [Anchor Client Rust](https://docs.rs/anchor-client/latest/anchor_client/)
-- [Poseidon Hash (circomlibjs)](https://github.com/iden3/circomlibjs)
+- [Barretenberg bb.js](https://www.npmjs.com/package/@aztec/bb.js) - Noir's proving backend with Poseidon2
+- [light-poseidon (Rust)](https://crates.io/crates/light-poseidon) - BN254 Poseidon for Rust
 
 ---
 

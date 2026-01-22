@@ -563,6 +563,6 @@ We get:
 
 ---
 
-*Document Version: 2.0*
+*Document Version: 1.0*
 *Architecture: Shielded Pool + Vaults*
 *Status: Ready for Implementation*

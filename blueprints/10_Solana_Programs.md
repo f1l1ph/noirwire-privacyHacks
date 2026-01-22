@@ -117,9 +117,21 @@ The main state account for the shielded pool:
 use anchor_lang::prelude::*;
 
 /// Configuration: Historical roots ring buffer size
-/// Default: 32 roots (allows ~32 blocks of delayed spending)
-/// Increase for longer windows, decrease to save account space
-pub const HISTORICAL_ROOTS_SIZE: usize = 32;
+/// Following Tornado Cash's security model (6 minute spending window):
+/// - Tornado Cash: 30 roots × 12s = 360 seconds on Ethereum
+/// - NoirWire: 900 roots × 0.4s = 360 seconds on Solana
+///
+/// Why 6 minutes (360 seconds)?
+/// - Allows time for transaction delays, network congestion, or RPC issues
+/// - Users can pre-generate proofs and submit later
+/// - Matches battle-tested Tornado Cash parameters adjusted for Solana speed
+///
+/// Trade-off: 900 × 32 bytes = 28.8KB account space
+/// Note: Can be reduced to 450 (3 min) or 225 (1.5 min) if space is constrained
+pub const HISTORICAL_ROOTS_SIZE: usize = 900;
+
+/// Merkle tree depth - MUST match circuit TREE_DEPTH (24 levels = ~16M leaves)
+pub const TREE_DEPTH: usize = 24;
 
 #[account]
 #[derive(Default)]
@@ -289,43 +301,46 @@ impl VerificationKey {
 
 ### 2.4 Vault Account
 
+> **Note:** Vault membership is managed by PER's Permission Program, NOT via on-chain merkle trees.
+> See [03_Vault_Circuits.md](03_Vault_Circuits.md) and [11_Vault_Program.md](11_Vault_Program.md) for the simplified vault model.
+
 ```rust
 // accounts/vault.rs
 
 use anchor_lang::prelude::*;
 
 #[account]
+#[derive(InitSpace)]
 pub struct Vault {
-    /// Unique vault identifier (hash)
+    /// Unique vault identifier
     pub vault_id: [u8; 32],
 
-    /// Merkle root of vault members
-    pub members_root: [u8; 32],
+    /// Human-readable name (max 32 chars)
+    #[max_len(32)]
+    pub name: String,
 
-    /// Number of members
-    pub member_count: u32,
-
-    /// Vault creator (can update members_root)
+    /// Admin who controls membership
     pub admin: Pubkey,
 
-    /// Vault metadata (encrypted, only members can decrypt)
-    pub encrypted_metadata: [u8; 128],
+    /// PER Permission Group ID
+    /// Membership is managed by PER Permission Program, not on-chain
+    pub permission_group: [u8; 32],
 
     /// Creation timestamp
     pub created_at: i64,
 
-    /// Vault type (0 = standard, 1 = multisig, etc.)
-    pub vault_type: u8,
-
-    /// Required signatures for multisig vaults
-    pub threshold: u8,
-
-    /// Bump seed
+    /// PDA bump seed
     pub bump: u8,
 }
 
 impl Vault {
-    pub const SIZE: usize = 8 + 32 + 32 + 4 + 32 + 128 + 8 + 1 + 1 + 1;
+    pub const SIZE: usize = 8 +  // discriminator
+        32 +                      // vault_id
+        4 + 32 +                  // name (length prefix + max chars)
+        32 +                      // admin
+        32 +                      // permission_group
+        8 +                       // created_at
+        1;                        // bump
 }
 ```
 
@@ -694,6 +709,12 @@ fn recipient_to_field(pubkey: &Pubkey) -> [u8; 32] {
 
 ### 3.4 Batch Settlement (from PER)
 
+> **IMPORTANT:** Solana transactions have a 1232-byte limit. Passing individual nullifiers
+> (e.g., 256 nullifiers × 32 bytes = 8KB) would exceed this limit.
+>
+> **Solution:** The batch proof commits to a `nullifiers_root` (merkle root of all nullifiers).
+> Individual nullifier PDAs are created in separate transactions by the PER/Indexer.
+
 ```rust
 // instructions/settle_batch.rs
 
@@ -704,7 +725,7 @@ use crate::errors::PoolError;
 use crate::events::BatchSettlementEvent;
 
 #[derive(Accounts)]
-#[instruction(new_root: [u8; 32], nullifiers: Vec<[u8; 32]>)]
+#[instruction(new_root: [u8; 32], nullifiers_root: [u8; 32], nullifier_count: u32)]
 pub struct SettleBatch<'info> {
     /// Pool state
     #[account(
@@ -729,40 +750,34 @@ pub struct SettleBatch<'info> {
     /// ZK Verifier program
     pub verifier_program: Program<'info, ZkVerifier>,
 
-    /// Payer for nullifier accounts
-    #[account(mut)]
-    pub payer: Signer<'info>,
-
     pub system_program: Program<'info, System>,
-
-    // NOTE: Nullifier PDAs are passed via remaining_accounts
-    // Each nullifier gets its own PDA created in this instruction
 }
 
 pub fn handler(
     ctx: Context<SettleBatch>,
     new_root: [u8; 32],
-    nullifiers: Vec<[u8; 32]>,
+    nullifiers_root: [u8; 32],
+    nullifier_count: u32,
     proof: ProofData,
 ) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
 
-    require!(nullifiers.len() <= 256, PoolError::BatchTooLarge);
-    require!(
-        ctx.remaining_accounts.len() == nullifiers.len(),
-        PoolError::InvalidNullifierAccounts
-    );
-
     // 1. Build public inputs for batch proof
-    //    [initial_root, final_root, nullifiers_hash]
-    let nullifiers_hash = hash_nullifiers(&nullifiers);
+    //    The batch circuit proves:
+    //    - All nullifiers are valid (double-spend prevention)
+    //    - State transition from old_root to new_root is correct
+    //    - nullifiers_root is the merkle root of all batch nullifiers
+    //
+    //    Public inputs: [initial_root, final_root, nullifiers_root, nullifier_count]
     let public_inputs = vec![
         proof.old_root,
         new_root,
-        nullifiers_hash,
+        nullifiers_root,
+        field_from_u32(nullifier_count),
     ];
 
     // 2. Verify batch ZK proof
+    //    This proves that nullifiers_root commits to valid nullifiers
     let cpi_ctx = CpiContext::new(
         ctx.accounts.verifier_program.to_account_info(),
         VerifyProof {
@@ -771,145 +786,65 @@ pub fn handler(
     );
     zk_verifier::cpi::verify(cpi_ctx, proof.proof_data, public_inputs)?;
 
-    // 3. Record all nullifiers via remaining_accounts
-    // Each remaining_account should be an uninitialized nullifier PDA
-    let pool_key = pool.key();
-    let current_slot = Clock::get()?.slot;
-
-    for (i, nullifier) in nullifiers.iter().enumerate() {
-        let nullifier_account = &ctx.remaining_accounts[i];
-
-        // Verify PDA derivation
-        let (expected_pda, bump) = Pubkey::find_program_address(
-            &[b"nullifier", pool_key.as_ref(), nullifier],
-            ctx.program_id,
-        );
-        require!(
-            nullifier_account.key() == expected_pda,
-            PoolError::InvalidNullifierPDA
-        );
-
-        // Create nullifier account
-        let nullifier_seeds = &[
-            b"nullifier",
-            pool_key.as_ref(),
-            nullifier.as_ref(),
-            &[bump],
-        ];
-
-        // Allocate space for NullifierEntry
-        let rent = Rent::get()?;
-        let space = NullifierEntry::SIZE;
-        let lamports = rent.minimum_balance(space);
-
-        anchor_lang::solana_program::program::invoke_signed(
-            &anchor_lang::solana_program::system_instruction::create_account(
-                ctx.accounts.payer.key,
-                nullifier_account.key,
-                lamports,
-                space as u64,
-                ctx.program_id,
-            ),
-            &[
-                ctx.accounts.payer.to_account_info(),
-                nullifier_account.clone(),
-                ctx.accounts.system_program.to_account_info(),
-            ],
-            &[nullifier_seeds],
-        )?;
-
-        // Initialize nullifier data
-        let mut nullifier_data = nullifier_account.try_borrow_mut_data()?;
-        let nullifier_entry = NullifierEntry {
-            nullifier: *nullifier,
-            slot: current_slot,
-            bump,
-        };
-
-        // Serialize (simplified - use anchor serialization in production)
-        nullifier_data[..8].copy_from_slice(&NullifierEntry::discriminator().to_le_bytes());
-        nullifier_data[8..40].copy_from_slice(nullifier);
-        nullifier_data[40..48].copy_from_slice(&current_slot.to_le_bytes());
-        nullifier_data[48] = bump;
-
-        pool.total_nullifiers += 1;
-    }
+    // 3. Store nullifiers_root for verification
+    //    Individual nullifier PDAs are created by the indexer/PER in separate txs
+    //    The nullifiers_root allows verification that each nullifier was in the batch
+    pool.last_nullifiers_root = nullifiers_root;
+    pool.total_nullifiers += nullifier_count as u64;
 
     // 4. Update pool state with new root
     pool.update_root(new_root);
 
-    // 5. Emit event
+    // 5. Emit event with nullifiers_root (indexer will process individual nullifiers)
     emit!(BatchSettlementEvent {
         pool: pool.key(),
         old_root: proof.old_root,
         new_root,
-        nullifier_count: nullifiers.len() as u32,
+        nullifiers_root,
+        nullifier_count,
         timestamp: Clock::get()?.unix_timestamp,
     });
 
     Ok(())
 }
 
-/// Hash all nullifiers together for compact public input
-fn hash_nullifiers(nullifiers: &[[u8; 32]]) -> [u8; 32] {
-    use solana_program::keccak;
-
-    let mut hasher_input = Vec::with_capacity(nullifiers.len() * 32);
-    for n in nullifiers {
-        hasher_input.extend_from_slice(n);
-    }
-    keccak::hash(&hasher_input).to_bytes()
-}
-
-impl NullifierEntry {
-    /// Account discriminator (first 8 bytes)
-    pub fn discriminator() -> u64 {
-        // Use anchor's discriminator derivation
-        // In production: anchor_lang::Discriminator::discriminator(&Self::default())
-        0x1234567890abcdef // Placeholder
-    }
+fn field_from_u32(val: u32) -> [u8; 32] {
+    let mut bytes = [0u8; 32];
+    bytes[28..32].copy_from_slice(&val.to_be_bytes());
+    bytes
 }
 ```
 
-**Client-side usage:**
+**Nullifier Creation (Separate Transactions):**
 
-```typescript
-// Building the transaction with remaining_accounts
-async function settleBatch(
-  program: Program,
-  poolPubkey: PublicKey,
-  nullifiers: Buffer[],
-  proof: ProofData,
-) {
-  // 1. Derive nullifier PDAs
-  const nullifierPDAs = await Promise.all(
-    nullifiers.map((n) =>
-      PublicKey.findProgramAddress(
-        [Buffer.from("nullifier"), poolPubkey.toBuffer(), n],
-        program.programId,
-      ),
-    ),
-  );
+The PER or indexer creates individual nullifier PDAs in batches of ~10-20 per transaction:
 
-  // 2. Build instruction with remaining_accounts
-  await program.methods
-    .settleBatch(newRoot, nullifiers, proof)
-    .accounts({
-      pool: poolPubkey,
-      perAuthority: perAuthority.publicKey,
-      verificationKey: vkPubkey,
-      verifierProgram: verifierProgramId,
-      payer: payer.publicKey,
-      systemProgram: SystemProgram.programId,
-    })
-    .remainingAccounts(
-      nullifierPDAs.map((pda) => ({
-        pubkey: pda[0],
-        isSigner: false,
-        isWritable: true,
-      })),
-    )
-    .rpc();
+```rust
+// instructions/record_nullifier.rs
+
+/// Record a single nullifier that was part of a batch settlement
+/// Called by PER/indexer after settle_batch succeeds
+pub fn handler(
+    ctx: Context<RecordNullifier>,
+    nullifier: [u8; 32],
+    nullifiers_root: [u8; 32],
+    merkle_proof: Vec<[u8; 32]>,  // Proof that nullifier is in nullifiers_root
+) -> Result<()> {
+    let pool = &ctx.accounts.pool;
+
+    // 1. Verify this nullifier was in the batch (merkle proof against nullifiers_root)
+    require!(
+        verify_nullifier_in_root(&nullifier, &nullifiers_root, &merkle_proof),
+        PoolError::InvalidNullifierProof
+    );
+
+    // 2. Create nullifier PDA (existence proves spent)
+    let nullifier_entry = &mut ctx.accounts.nullifier_entry;
+    nullifier_entry.nullifier = nullifier;
+    nullifier_entry.slot = Clock::get()?.slot;
+    nullifier_entry.bump = ctx.bumps.nullifier_entry;
+
+    Ok(())
 }
 ```
 
@@ -951,6 +886,7 @@ anchor-test = "0.32.1"
 ```
 
 **Why num-bigint?**
+
 - BN254 field modulus is 254 bits (larger than native u128)
 - Modular arithmetic requires proper handling of wraparound
 - Production safety: prevents subtle bugs in field operations
@@ -1156,7 +1092,7 @@ fn negate_g1(point: &[u8; 64]) -> Result<[u8; 64]> {
 
 ### 4.5 Compute Budget Considerations
 
-```rust
+````rust
 // Groth16 verification costs on Solana (approximate)
 // Based on Light Protocol benchmarks
 
@@ -1188,7 +1124,7 @@ pub fn estimate_verify_cu(public_input_count: usize) -> u32 {
 ///     units: 500_000,
 /// });
 /// ```
-```
+````
 
 ### 4.6 Compute Budget Benchmarking
 
@@ -1260,17 +1196,18 @@ mod benches {
 
 #### Expected Results (To be confirmed via benchmarking)
 
-| Circuit Type | Public Inputs | Estimated CU | Need Benchmark? |
-|--------------|---------------|--------------|-----------------|
-| Deposit      | 3             | ~420k        | ✅ Yes          |
-| Transfer     | 3             | ~420k        | ✅ Yes          |
-| Withdraw     | 5             | ~450k        | ✅ Yes          |
-| Batch (N=4)  | 3 (compressed)| ~420k        | ✅ Yes          |
-| Batch (N=64) | 3 (compressed)| ~420k        | ✅ Yes          |
+| Circuit Type | Public Inputs  | Estimated CU | Need Benchmark? |
+| ------------ | -------------- | ------------ | --------------- |
+| Deposit      | 3              | ~420k        | ✅ Yes          |
+| Transfer     | 3              | ~420k        | ✅ Yes          |
+| Withdraw     | 5              | ~450k        | ✅ Yes          |
+| Batch (N=4)  | 3 (compressed) | ~420k        | ✅ Yes          |
+| Batch (N=64) | 3 (compressed) | ~420k        | ✅ Yes          |
 
 #### Production Recommendations
 
 1. **Always request sufficient CU:**
+
    ```typescript
    const computeBudget = ComputeBudgetProgram.setComputeUnitLimit({
      units: 600_000, // Buffer for safety
@@ -1278,6 +1215,7 @@ mod benches {
    ```
 
 2. **Set compute unit price for priority:**
+
    ```typescript
    const priorityFee = ComputeBudgetProgram.setComputeUnitPrice({
      microLamports: 1, // Adjust based on network congestion
@@ -1285,6 +1223,7 @@ mod benches {
    ```
 
 3. **Monitor actual consumption:**
+
    ```typescript
    const sig = await program.methods.verify(...).rpc();
    const tx = await connection.getTransaction(sig, {
@@ -1773,22 +1712,24 @@ Solana transactions have two cost components:
    - Priority fees: Optional, paid per CU for faster inclusion
 
 **Current SOL Price Context (January 2026):**
+
 - Assumes SOL = $100 USD (adjust based on actual market price)
 - 1 SOL = 1,000,000,000 lamports
 - 1 lamport = $0.0000001 USD at $100/SOL
 
 ### Per-Transaction Cost Breakdown
 
-| Operation | Compute Units | Base Fee (lamports) | Priority Fee (est) | Rent (lamports) | Total Cost (lamports) | USD Cost (@$100/SOL) |
-|-----------|---------------|---------------------|--------------------|-----------------|-----------------------|----------------------|
-| **Deposit** | ~500,000 CU | 5,000 | 50,000 (10%) | 0 | ~55,000 | $0.0055 |
-| **Transfer (Private)** | ~600,000 CU | 5,000 | 60,000 (10%) | 0 | ~65,000 | $0.0065 |
-| **Withdraw** | ~550,000 CU | 5,000 | 55,000 (10%) | 14,000 (nullifier PDA) | ~74,000 | $0.0074 |
-| **Batch Settlement** | ~500,000 CU | 5,000 | 50,000 (10%) | 14,000 × N | ~55,000 + (14,000 × N) | Variable |
-| **Create Vault** | ~50,000 CU | 5,000 | 5,000 (10%) | ~2,000,000 (vault account) | ~2,010,000 | $0.201 |
-| **Vault Membership Update** | ~80,000 CU | 5,000 | 8,000 (10%) | 0 | ~13,000 | $0.0013 |
+| Operation                   | Compute Units | Base Fee (lamports) | Priority Fee (est) | Rent (lamports)            | Total Cost (lamports)  | USD Cost (@$100/SOL) |
+| --------------------------- | ------------- | ------------------- | ------------------ | -------------------------- | ---------------------- | -------------------- |
+| **Deposit**                 | ~500,000 CU   | 5,000               | 50,000 (10%)       | 0                          | ~55,000                | $0.0055              |
+| **Transfer (Private)**      | ~600,000 CU   | 5,000               | 60,000 (10%)       | 0                          | ~65,000                | $0.0065              |
+| **Withdraw**                | ~550,000 CU   | 5,000               | 55,000 (10%)       | 14,000 (nullifier PDA)     | ~74,000                | $0.0074              |
+| **Batch Settlement**        | ~500,000 CU   | 5,000               | 50,000 (10%)       | 14,000 × N                 | ~55,000 + (14,000 × N) | Variable             |
+| **Create Vault**            | ~50,000 CU    | 5,000               | 5,000 (10%)        | ~2,000,000 (vault account) | ~2,010,000             | $0.201               |
+| **Vault Membership Update** | ~80,000 CU    | 5,000               | 8,000 (10%)        | 0                          | ~13,000                | $0.0013              |
 
 **Notes:**
+
 - Priority fees are optional and market-dependent (10% shown as example)
 - Nullifier PDA rent: ~14,000 lamports per nullifier (refundable if closed)
 - Vault account rent: ~2M lamports (one-time, refundable if vault deleted)
@@ -1819,29 +1760,31 @@ Cost per transaction (amortized):
 
 Solana requires rent exemption for persistent accounts:
 
-| Account Type | Size (bytes) | Rent (lamports) | Rent (USD @$100/SOL) | Refundable? |
-|--------------|--------------|-----------------|----------------------|-------------|
-| **PoolState** | ~1,400 | ~10,000,000 | $1.00 | Yes (admin only) |
-| **NullifierEntry** | 49 | ~14,000 | $0.0014 | Yes (via close instruction) |
-| **VerificationKey** | ~1,200 | ~8,500,000 | $0.85 | Yes (admin only) |
-| **Vault** | ~250 | ~2,000,000 | $0.20 | Yes (vault owner) |
+| Account Type        | Size (bytes) | Rent (lamports) | Rent (USD @$100/SOL) | Refundable?                 |
+| ------------------- | ------------ | --------------- | -------------------- | --------------------------- |
+| **PoolState**       | ~1,400       | ~10,000,000     | $1.00                | Yes (admin only)            |
+| **NullifierEntry**  | 49           | ~14,000         | $0.0014              | Yes (via close instruction) |
+| **VerificationKey** | ~1,200       | ~8,500,000      | $0.85                | Yes (admin only)            |
+| **Vault**           | ~250         | ~2,000,000      | $0.20                | Yes (vault owner)           |
 
 **Rent Recovery Strategy:**
+
 - Nullifier accounts can be closed after sufficient finality (e.g., 1000 blocks)
 - Implement nullifier cleanup worker to recover rent periodically
 - Estimated recovery: 90% of nullifier rent after 1 week
 
 ### Cost Comparison with Other Solutions
 
-| Platform | Private Transfer Cost | Settlement Time | Notes |
-|----------|----------------------|-----------------|-------|
-| **NoirWire (ours)** | $0.0065 | ~2-10 seconds (PER) + batch settlement | Fast UX, batch amortization |
-| **Tornado Cash (ETH)** | $5-50 | 12 seconds | High gas fees on Ethereum L1 |
-| **Aztec Connect (ETH)** | $2-20 | 12 seconds | L2 rollup, batch proving |
-| **Railgun (ETH)** | $3-30 | 12 seconds | Private DeFi, high complexity |
-| **Zcash** | $0.001 | ~75 seconds | Dedicated privacy chain |
+| Platform                | Private Transfer Cost | Settlement Time                        | Notes                         |
+| ----------------------- | --------------------- | -------------------------------------- | ----------------------------- |
+| **NoirWire (ours)**     | $0.0065               | ~2-10 seconds (PER) + batch settlement | Fast UX, batch amortization   |
+| **Tornado Cash (ETH)**  | $5-50                 | 12 seconds                             | High gas fees on Ethereum L1  |
+| **Aztec Connect (ETH)** | $2-20                 | 12 seconds                             | L2 rollup, batch proving      |
+| **Railgun (ETH)**       | $3-30                 | 12 seconds                             | Private DeFi, high complexity |
+| **Zcash**               | $0.001                | ~75 seconds                            | Dedicated privacy chain       |
 
 **NoirWire Advantage:**
+
 - 100-1000x cheaper than Ethereum privacy solutions
 - Comparable to Zcash while maintaining Solana composability
 - Sub-second UX via PER, cost-efficient batch settlement
@@ -1849,7 +1792,9 @@ Solana requires rent exemption for persistent accounts:
 ### Cost Optimization Strategies
 
 #### 1. Batch Aggregation
+
 Accumulate transactions in PER before settling to L1:
+
 ```
 Strategy: Wait for 50+ transactions before settlement
 - Individual tx cost: $0.0065 → $0.00151 (76% savings)
@@ -1857,7 +1802,9 @@ Strategy: Wait for 50+ transactions before settlement
 ```
 
 #### 2. Nullifier Cleanup
+
 Implement automatic cleanup of old nullifier PDAs:
+
 ```rust
 // Close nullifier after 1000 blocks (~400 seconds)
 pub fn cleanup_nullifier(ctx: Context<CleanupNullifier>) -> Result<()> {
@@ -1873,10 +1820,13 @@ pub fn cleanup_nullifier(ctx: Context<CleanupNullifier>) -> Result<()> {
     Ok(())
 }
 ```
+
 Estimated savings: ~14,000 lamports per nullifier ($0.0014)
 
 #### 3. Priority Fee Management
+
 Dynamic priority fees based on network congestion:
+
 ```typescript
 // Query recent priority fees
 const recentFees = await connection.getRecentPrioritizationFees();
@@ -1884,26 +1834,30 @@ const medianFee = recentFees.sort()[Math.floor(recentFees.length / 2)];
 
 // Set dynamic priority
 const computeBudgetIx = ComputeBudgetProgram.setComputeUnitPrice({
-  microLamports: Math.min(medianFee.prioritizationFee, 100_000)
+  microLamports: Math.min(medianFee.prioritizationFee, 100_000),
 });
 ```
 
 #### 4. Transaction Batching (Versioned Transactions)
+
 Use Solana's versioned transactions to pack multiple operations:
+
 ```typescript
 // Single transaction: deposit + transfer
 const tx = new VersionedTransaction(
   new Message({
     recentBlockhash,
     instructions: [depositIx, transferIx],
-  })
+  }),
 );
 ```
+
 Savings: 1 base fee instead of 2 (~5,000 lamports)
 
 ### Monthly Cost Projections
 
 **Small Scale (100 users, 1000 txs/month):**
+
 ```
 User costs:
 - Average tx cost: $0.0065 × 1000 = $6.50/month
@@ -1916,6 +1870,7 @@ Total operator: ~$31/month
 ```
 
 **Medium Scale (1000 users, 10,000 txs/month):**
+
 ```
 User costs:
 - Average tx cost: $0.0030 × 10,000 = $30/month (with batching)
@@ -1928,6 +1883,7 @@ Total operator: ~$105/month
 ```
 
 **Large Scale (10,000 users, 100,000 txs/month):**
+
 ```
 User costs:
 - Average tx cost: $0.0015 × 100,000 = $150/month (optimized batching)
@@ -1942,8 +1898,9 @@ Total operator: ~$425/month
 ### Production Recommendations
 
 1. **Always set compute budget explicitly:**
+
    ```typescript
-   ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 })
+   ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 });
    ```
 
 2. **Monitor and optimize priority fees:**
@@ -2042,6 +1999,7 @@ Upgrade Authority: <multisig_address>
 ```
 
 **Upgrade Process:**
+
 1. Deploy new program binary to a buffer account
 2. Verify new binary in staging environment
 3. Submit upgrade transaction (requires upgrade authority signature)
@@ -2205,6 +2163,7 @@ pub fn migrate_to_v2(ctx: Context<MigratePool>) -> Result<()> {
 ```
 
 **Migration Deployment:**
+
 ```bash
 # 1. Deploy new program version
 anchor build
@@ -2288,12 +2247,13 @@ Step 3: Old Pool Sunset
 ```
 
 **User Migration Tool:**
+
 ```typescript
 // SDK tool to migrate user funds
 async function migrateToV2(
   oldPool: PublicKey,
   newPool: PublicKey,
-  userWallet: Keypair
+  userWallet: Keypair,
 ) {
   // 1. Withdraw all from V1
   const commitments = await fetchUserCommitments(oldPool, userWallet);
@@ -2367,6 +2327,7 @@ pub fn rollback_to_checkpoint(ctx: Context<AdminAction>) -> Result<()> {
 ### 9.6 Migration Checklist
 
 #### Pre-Migration
+
 - [ ] **Test migration on devnet** with production data clone
 - [ ] **Benchmark new code** (CU usage, latency)
 - [ ] **Security audit** of changed code
@@ -2376,6 +2337,7 @@ pub fn rollback_to_checkpoint(ctx: Context<AdminAction>) -> Result<()> {
 - [ ] **Notify users** (if UX changes)
 
 #### During Migration
+
 - [ ] **Monitor L1 closely** during upgrade
 - [ ] **Have admin keys ready** for emergency pause
 - [ ] **Watch for errors** in first 1000 transactions
@@ -2383,6 +2345,7 @@ pub fn rollback_to_checkpoint(ctx: Context<AdminAction>) -> Result<()> {
 - [ ] **Check all CPI integrations** still work
 
 #### Post-Migration
+
 - [ ] **Monitor for 24 hours** continuously
 - [ ] **Verify all user balances** unchanged
 - [ ] **Run state verification** against snapshots
@@ -2405,6 +2368,7 @@ Examples:
 ```
 
 **On-Chain Version Tracking:**
+
 ```rust
 pub const PROGRAM_VERSION: &str = "1.2.3";
 
@@ -2446,6 +2410,7 @@ Week 5-6: Monitoring
 ### 9.9 Communication Plan
 
 **User Notifications:**
+
 ```typescript
 // Notify users of upcoming migration
 interface MigrationNotice {
@@ -2473,6 +2438,7 @@ const notice: MigrationNotice = {
 ```
 
 **Migration Support:**
+
 - Create migration guide documentation
 - Provide CLI tool for automated migration
 - Set up support channel during migration window

@@ -253,9 +253,11 @@ noirwire-per/
 A balance is stored as a commitment (hash) in the Merkle tree:
 
 ```noir
+use std::hash::poseidon2::Poseidon2;
+
 // Commitment = hash(owner, amount, salt, vault_id?)
 struct Balance {
-    owner: Field,           // Poseidon hash of public key
+    owner: Field,           // Poseidon2 hash of public key
     amount: Field,          // Token amount (as Field)
     salt: Field,            // Random blinding factor
     vault_id: Field,        // 0 for solo users, vault hash for members
@@ -269,7 +271,7 @@ fn compute_commitment(balance: Balance) -> Field {
         balance.salt,
         balance.vault_id
     ];
-    poseidon2::hash(inputs, 4)
+    Poseidon2::hash(inputs, 4)
 }
 ```
 
@@ -278,13 +280,15 @@ fn compute_commitment(balance: Balance) -> Field {
 Prevents double-spending by revealing a unique hash when spending:
 
 ```noir
+use std::hash::poseidon2::Poseidon2;
+
 // Nullifier = hash(commitment, secret_key, nonce)
 fn compute_nullifier(
     commitment: Field,
     secret_key: Field,
     nonce: Field
 ) -> Field {
-    poseidon2::hash([commitment, secret_key, nonce], 3)
+    Poseidon2::hash([commitment, secret_key, nonce], 3)
 }
 ```
 
@@ -299,11 +303,12 @@ fn compute_nullifier(
 Using **Sparse Merkle Tree** for the balance tree (allows non-membership proofs):
 
 ```noir
-// Tree depth: 32 levels = 2^32 possible leaves
-// NOTE: For MVP, consider using depth 20-24 (1M-16M leaves)
-// This reduces proof size and verification time significantly
-// Production can scale to 32 if needed
-global TREE_DEPTH: u32 = 32;
+use std::hash::poseidon2::Poseidon2;
+
+// Tree depth: 24 levels = 2^24 (~16M) possible leaves
+// This provides sufficient capacity for millions of commitments
+// while keeping proof size and verification time manageable
+global TREE_DEPTH: u32 = 24;
 
 struct MerkleProof {
     siblings: [Field; TREE_DEPTH],  // Sibling hashes
@@ -322,9 +327,9 @@ fn verify_merkle_inclusion(
         let is_right = proof.path_indices[i];
 
         current = if is_right == 1 {
-            poseidon2::hash([sibling, current], 2)
+            Poseidon2::hash([sibling, current], 2)
         } else {
-            poseidon2::hash([current, sibling], 2)
+            Poseidon2::hash([current, sibling], 2)
         };
     }
 
@@ -369,7 +374,7 @@ PRIVATE INPUTS:
 ```noir
 // circuits/deposit.nr
 
-use dep::std::hash::poseidon2::Poseidon2::hash as poseidon2;
+use std::hash::poseidon2::Poseidon2;
 
 fn main(
     // Public inputs
@@ -385,9 +390,8 @@ fn main(
     old_root: Field
 ) {
     // 1. Verify commitment is correctly computed
-    let computed_commitment = poseidon2(
-        [owner, deposit_amount, salt, vault_id],
-        4
+    let computed_commitment = Poseidon2::hash(
+        [owner, deposit_amount, salt, vault_id], 4
     );
     assert(computed_commitment == new_commitment);
 
@@ -432,6 +436,8 @@ PRIVATE INPUTS:
 ```noir
 // circuits/transfer.nr
 
+use std::hash::poseidon2::Poseidon2;
+
 fn main(
     // Public
     nullifier: pub Field,
@@ -461,10 +467,9 @@ fn main(
     // ===== SENDER CHECKS =====
 
     // 1. Reconstruct sender's commitment
-    let sender_owner = poseidon2([sender_secret], 1);
-    let computed_sender_commitment = poseidon2(
-        [sender_owner, sender_amount, sender_salt, sender_vault_id],
-        4
+    let sender_owner = hash_1([sender_secret]);
+    let computed_sender_commitment = hash_4(
+        [sender_owner, sender_amount, sender_salt, sender_vault_id]
     );
     assert(computed_sender_commitment == sender_commitment);
 
@@ -476,9 +481,8 @@ fn main(
     ));
 
     // 3. Verify nullifier is correct
-    let computed_nullifier = poseidon2(
-        [sender_commitment, sender_secret, nonce],
-        3
+    let computed_nullifier = hash_3(
+        [sender_commitment, sender_secret, nonce]
     );
     assert(computed_nullifier == nullifier);
 
@@ -492,14 +496,12 @@ fn main(
     let receiver_amount = transfer_amount;
 
     // 6. Compute new commitments
-    let new_sender_commitment = poseidon2(
-        [sender_owner, new_sender_amount, new_sender_salt, sender_vault_id],
-        4
+    let new_sender_commitment = hash_4(
+        [sender_owner, new_sender_amount, new_sender_salt, sender_vault_id]
     );
 
-    let receiver_commitment = poseidon2(
-        [receiver_owner, receiver_amount, receiver_salt, receiver_vault_id],
-        4
+    let receiver_commitment = hash_4(
+        [receiver_owner, receiver_amount, receiver_salt, receiver_vault_id]
     );
 
     // 7. Verify tree update (old sender → new sender + receiver)
@@ -527,6 +529,8 @@ fn main(
 ```noir
 // circuits/withdraw.nr
 
+use std::hash::poseidon2::Poseidon2;
+
 fn main(
     // Public
     nullifier: pub Field,
@@ -545,19 +549,17 @@ fn main(
     new_balance_salt: Field
 ) {
     // 1. Reconstruct commitment
-    let owner = poseidon2([owner_secret], 1);
-    let commitment = poseidon2(
-        [owner, balance_amount, balance_salt, balance_vault_id],
-        4
+    let owner = Poseidon2::hash([owner_secret], 1);
+    let commitment = Poseidon2::hash(
+        [owner, balance_amount, balance_salt, balance_vault_id], 4
     );
 
     // 2. Verify exists in tree
     assert(verify_merkle_inclusion(commitment, old_root, merkle_proof));
 
     // 3. Verify nullifier
-    let computed_nullifier = poseidon2(
-        [commitment, owner_secret, nonce],
-        3
+    let computed_nullifier = Poseidon2::hash(
+        [commitment, owner_secret, nonce], 3
     );
     assert(computed_nullifier == nullifier);
 
@@ -569,9 +571,8 @@ fn main(
 
     // 6. If remainder > 0, create new commitment
     if remainder as u64 > 0 {
-        let new_commitment = poseidon2(
-            [owner, remainder, new_balance_salt, balance_vault_id],
-            4
+        let new_commitment = Poseidon2::hash(
+            [owner, remainder, new_balance_salt, balance_vault_id], 4
         );
         // Verify new commitment added to tree
         // [merkle update proof]
@@ -593,6 +594,8 @@ fn main(
 ```noir
 // circuits/vault_membership.nr
 
+use std::hash::poseidon2::Poseidon2;
+
 struct VaultMembership {
     vault_id: Field,
     members_root: Field,  // Merkle root of member list
@@ -609,11 +612,11 @@ fn main(
     membership_proof: MerkleProof
 ) {
     // 1. Derive member's identifier from secret
-    let member_id = poseidon2([member_secret], 1);
+    let member_id = Poseidon2::hash([member_secret], 1);
     assert(member_id == member_pubkey);
 
     // 2. Prove membership in vault's member list
-    let member_leaf = poseidon2([vault_id, member_pubkey], 2);
+    let member_leaf = Poseidon2::hash([vault_id, member_pubkey], 2);
 
     assert(verify_merkle_inclusion(
         member_leaf,
@@ -655,7 +658,7 @@ fn main(
     // 1. Verify sender is vault member
     verify_vault_membership(
         vault_id,
-        poseidon2([sender_secret], 1),
+        hash_1([sender_secret]),
         sender_vault_membership_proof
     );
 
@@ -758,11 +761,32 @@ Total: ~4 aggregation proofs instead of 99!
 
 ### Pre-Compiled Batch Circuits
 
+> ⚠️ **IMPORTANT - Recursive Proof Verification:**
+>
+> The `verify_proof()` function shown below is **pseudocode** illustrating the concept.
+> Noir's actual recursive verification API has evolved significantly.
+>
+> **Before implementation:**
+>
+> 1. Check current Noir docs for recursive proof verification syntax
+> 2. Review [Noir recursion examples](https://github.com/noir-lang/noir/tree/master/test_programs/execution_success/recursion)
+> 3. The `#[recursive]` attribute may be required on circuits meant for aggregation
+> 4. Proof and VK sizes vary by backend - verify actual sizes with Barretenberg
+>
+> **Modern Noir recursion pattern (as of 0.34+):**
+>
+> ```noir
+> use std::verify_proof_with_type;
+> // OR use the recursion module for recursive verification
+> ```
+
 ```noir
 // circuits/batch/batch_4.nr
 // Aggregates exactly 4 proofs
+// ⚠️ PSEUDOCODE - Noir 1.0 recursion API uses #[fold] and std::verify_proof
+// See: https://noir-lang.org/docs/explainers/explainer-recursion
 
-use dep::std::verify_proof;
+use std::verify_proof;
 
 fn main(
     // Public outputs
@@ -929,6 +953,7 @@ fn main(
 ### The Challenge
 
 Noir's `verify_proof()` function is expensive in circuits:
+
 - Each recursive verification adds ~200k-300k constraints
 - Verification key checks add overhead
 - Multiple verifications in batch circuits compound the cost
@@ -940,6 +965,9 @@ Noir's `verify_proof()` function is expensive in circuits:
 Instead of verifying each proof independently, cache VK operations:
 
 ```noir
+use std::hash::poseidon2::Poseidon2;
+use std::hash::Poseidon2Hasher;
+
 // Optimized batch verifier
 fn verify_batch_optimized<let N: u32>(
     proofs: [[Field; PROOF_SIZE]; N],
@@ -949,7 +977,11 @@ fn verify_batch_optimized<let N: u32>(
 ) {
     // 1. Verify all VKs match expected hash (once)
     for i in 0..N {
-        let computed_hash = poseidon2(vks[i], VK_SIZE);
+        let mut hasher = Poseidon2Hasher::default();
+        for j in 0..VK_SIZE {
+            hasher.write(vks[i][j]);
+        }
+        let computed_hash = hasher.finish();
         assert(computed_hash == vk_hash);
     }
 
@@ -965,11 +997,17 @@ fn verify_batch_optimized<let N: u32>(
 Reduce verification overhead by compressing public inputs:
 
 ```noir
+use std::hash::Poseidon2Hasher;
+
 // Instead of verifying 100 separate nullifiers
 // Verify hash(nullifiers) as single input
 
-fn compress_public_inputs(nullifiers: [Field; N]) -> Field {
-    poseidon2(nullifiers, N)
+fn compress_public_inputs<let N: u32>(nullifiers: [Field; N]) -> Field {
+    let mut hasher = Poseidon2Hasher::default();
+    for i in 0..N {
+        hasher.write(nullifiers[i]);
+    }
+    hasher.finish()
 }
 
 // In batch proof, verify:
@@ -1009,9 +1047,10 @@ For trusted TEE environment, defer some verifications:
 Noir 1.0+ has optimized recursion support:
 
 ```noir
-use dep::std::verify_proof;
+use std::verify_proof;
 
 // Use the native recursion feature (optimized in backend)
+// Noir 1.0+ supports #[fold] attribute for IVC-style folding
 #[recursive]
 fn aggregate_proofs(
     proofs: [Proof; N],
@@ -1028,9 +1067,15 @@ fn aggregate_proofs(
 For intermediate aggregation, use commitments:
 
 ```noir
+use std::hash::Poseidon2Hasher;
+
 // Instead of full verification, commit to proof
-fn commit_to_proof(proof: [Field; PROOF_SIZE]) -> Field {
-    poseidon2(proof, PROOF_SIZE)
+fn commit_to_proof<let N: u32>(proof: [Field; N]) -> Field {
+    let mut hasher = Poseidon2Hasher::default();
+    for i in 0..N {
+        hasher.write(proof[i]);
+    }
+    hasher.finish()
 }
 
 // Verify commitments in final aggregator
@@ -1039,8 +1084,8 @@ fn commit_to_proof(proof: [Field; PROOF_SIZE]) -> Field {
 
 ### Benchmarks (Before vs After Optimization)
 
-| Circuit Type | Original | Optimized | Improvement |
-|--------------|----------|-----------|-------------|
+| Circuit Type | Original | Optimized | Improvement    |
+| ------------ | -------- | --------- | -------------- |
 | batch_4      | ~800k    | ~500k     | **37% faster** |
 | batch_8      | ~1.6M    | ~900k     | **44% faster** |
 | batch_16     | ~3.2M    | ~1.6M     | **50% faster** |
@@ -1059,7 +1104,10 @@ fn commit_to_proof(proof: [Field; PROOF_SIZE]) -> Field {
 ```noir
 // circuits/batch/batch_optimized.nr
 
-fn main(
+use std::hash::poseidon2::Poseidon2;
+use std::hash::Poseidon2Hasher;
+
+fn main<let N: u32>(
     // Compressed public inputs
     initial_root: pub Field,
     final_root: pub Field,
@@ -1073,7 +1121,11 @@ fn main(
     nullifiers: [Field; N],  // Actual nullifiers (private)
 ) {
     // 1. Verify nullifiers commitment
-    let computed_commitment = poseidon2(nullifiers, N);
+    let mut hasher = Poseidon2Hasher::default();
+    for i in 0..N {
+        hasher.write(nullifiers[i]);
+    }
+    let computed_commitment = hasher.finish();
     assert(computed_commitment == nullifiers_commitment);
 
     // 2. Batch verify proofs with cached VK
@@ -1090,11 +1142,19 @@ fn main(
 ```toml
 # Nargo.toml
 
+[package]
+name = "noirwire_circuits"
+type = "lib"
+authors = ["NoirWire Team"]
+compiler_version = ">=1.0.0-beta.18"
+# As of Jan 2026: Latest is v1.0.0-beta.18 (beta stage)
+
 [dependencies]
-# Poseidon2 hash (native, most efficient)
-# Included in std library
+# Poseidon2 hash is NOW IN STDLIB (as of Noir 1.0.0-beta)
+# No external dependency needed! Use: use std::hash::poseidon2::Poseidon2;
 
 # Merkle Trees (ZK-Kit)
+# ⚠️ Verify compatibility with your Noir version
 merkle_trees = {
     git = "https://github.com/privacy-scaling-explorations/zk-kit.noir",
     tag = "merkle-trees-v0.0.1",
@@ -1107,7 +1167,33 @@ bignum = {
 }
 ```
 
-### Hash Function Choice
+> **Version Note (Updated Jan 2026):**
+>
+> - Latest Noir: **v1.0.0-beta.18** (still in beta, but stable for production)
+> - Poseidon2 is **now in standard library** - no external dependency needed
+> - Check [github.com/noir-lang/noir/releases](https://github.com/noir-lang/noir/releases) for updates
+
+### Hash Function: Poseidon2 (Built-in)
+
+```noir
+// Poseidon2 is in the Noir standard library
+use std::hash::poseidon2::Poseidon2;
+
+// Hash an array of fields:
+fn hash_commitment(values: [Field; 3]) -> Field {
+    Poseidon2::hash(values, 3)  // (input, message_size)
+}
+
+// Or use the Hasher interface for variable-length:
+use std::hash::Poseidon2Hasher;
+
+fn hash_variable(a: Field, b: Field) -> Field {
+    let mut hasher = Poseidon2Hasher::default();
+    hasher.write(a);
+    hasher.write(b);
+    hasher.finish()
+}
+```
 
 | Hash          | Constraints | Use Case                   |
 | ------------- | ----------- | -------------------------- |
@@ -1116,7 +1202,7 @@ bignum = {
 | SHA256        | ~25000      | NOT recommended            |
 | Blake3        | ~5000       | External verification      |
 
-**Recommendation:** Use `Poseidon2` everywhere (native Noir support).
+**Recommendation:** Use `Poseidon2` from stdlib everywhere (ZK-optimized, Barretenberg-compatible).
 
 ---
 
@@ -1194,7 +1280,7 @@ circuits/
 - [Noir Documentation](https://noir-lang.org/docs/)
 - [ZK-Kit Merkle Trees](https://github.com/privacy-scaling-explorations/zk-kit.noir/tree/main/packages/merkle-trees)
 - [Noir Recursive Proofs](https://noir-lang.org/docs/noir/standard_library/recursion)
-- [Poseidon2 Hash](https://noir-lang.org/docs/noir/standard_library/cryptographic_primitives/hashes#pedersen_hash)
+- [Poseidon Hash (external library)](https://github.com/noir-lang/noir_hashes)
 - [Barretenberg Backend](https://github.com/AztecProtocol/barretenberg)
 
 ---

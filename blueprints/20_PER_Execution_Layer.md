@@ -247,6 +247,9 @@ ark-bn254 = "0.4"
 ark-ff = "0.4"
 ark-serialize = "0.4"
 
+# Poseidon hashing (MUST be compatible with Noir circuits)
+light-poseidon = "0.2"
+
 # Merkle tree
 rs-merkle = "1.4"
 
@@ -283,6 +286,19 @@ opt-level = 3
 lto = true
 codegen-units = 1
 ```
+
+> ⚠️ **CRITICAL - Poseidon Hash Compatibility:**
+>
+> **The PER MUST use Poseidon hashing that is compatible with Noir circuits.**
+>
+> The `light-poseidon` Rust crate uses the same Poseidon2 parameters as Barretenberg
+> (which is what Noir uses), ensuring hash compatibility between the PER and circuits.
+>
+> **DO NOT use other Poseidon crates** (like `poseidon-rs` or `ff-zk-hash`) without
+> verifying parameter compatibility, or proof verification will fail.
+>
+> All commitment hashes, nullifier hashes, and merkle tree hashes computed in the PER
+> must match exactly what the Noir circuits compute.
 
 ---
 
@@ -1155,9 +1171,9 @@ pub struct MerkleProofWitness {
 use std::collections::HashMap;
 
 /// Sparse Merkle Tree for balance commitments
-/// Depth: 32 (2^32 possible leaves)
+/// Depth: 24 (2^24 = ~16M possible leaves)
 pub struct SparseMerkleTree {
-    /// Tree depth (32 for production, 20-24 for MVP)
+    /// Tree depth (24 for NoirWire)
     depth: usize,
 
     /// Leaf nodes: commitment_hash -> leaf_value
@@ -1451,7 +1467,7 @@ pub struct StateManager {
 
 impl StateManager {
     pub fn new(initial_root: [u8; 32]) -> Self {
-        let tree = SparseMerkleTree::new(32); // depth 32
+        let tree = SparseMerkleTree::new(24); // depth 24 (matches circuit TREE_DEPTH)
 
         Self {
             merkle_tree: Arc::new(RwLock::new(tree)),

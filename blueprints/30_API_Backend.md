@@ -5,6 +5,7 @@
 This blueprint defines the **API Backend layer** - a REST API gateway, transaction indexer, and webhook system that provides a developer-friendly interface to the NoirWire private payment system.
 
 The API Backend serves as:
+
 - **Gateway to PER**: Proxies requests to the PER execution layer
 - **Transaction Indexer**: Reads and stores Solana events for historical queries
 - **Webhook System**: Notifies users of transaction confirmations and settlements
@@ -138,164 +139,113 @@ The API Backend serves as:
 
 ## 2. Tech Stack
 
+### Technology Choice
+
+The API Backend is built with **NestJS (TypeScript)**, while the PER Executor (see [20_PER_Execution_Layer.md](20_PER_Execution_Layer.md)) runs in **Rust** inside Intel TDX enclaves.
+
+| Component        | Technology          | Rationale                                        |
+| ---------------- | ------------------- | ------------------------------------------------ |
+| **API Backend**  | NestJS (TypeScript) | Fast development, great DX, TypeScript ecosystem |
+| **PER Executor** | Rust                | Performance, TEE compatibility, Barretenberg FFI |
+
 ### Dependencies
 
-```toml
-# Cargo.toml
+```json
+// package.json for @noirwire/api
 
-[package]
-name = "noirwire_api_backend"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-# Web framework
-tokio = { version = "1.35", features = ["full"] }
-axum = { version = "0.7", features = ["ws"] }
-tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "trace", "compression-gzip"] }
-
-# Supabase / PostgreSQL
-postgrest = "2.0"  # Supabase REST API client
-sqlx = { version = "0.7", features = ["postgres", "runtime-tokio", "uuid", "chrono"] }
-
-# Redis (Railway plugin)
-redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
-
-# Solana client
-solana-client = "2.0"
-solana-sdk = "2.0"
-solana-transaction-status = "2.0"
-anchor-client = "0.32.1"
-
-# WebSocket for Realtime
-tokio-tungstenite = "0.21"
-futures-util = "0.3"
-
-# Background jobs
-tokio-cron-scheduler = "0.10"
-
-# HTTP client (for PER + webhooks)
-reqwest = { version = "0.11", features = ["json"] }
-
-# Auth & security
-jsonwebtoken = "9.2"
-hmac = "0.12"
-sha2 = "0.10"
-argon2 = "0.5"
-
-# Environment config
-dotenvy = "0.15"
-
-# Serialization
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-
-# UUID
-uuid = { version = "1.6", features = ["v4", "serde"] }
-
-# Time
-chrono = { version = "0.4", features = ["serde"] }
-
-# Error handling
-anyhow = "1.0"
-thiserror = "1.0"
-
-# Logging
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-
-# Metrics
-prometheus = "0.13"
-axum-prometheus = "0.6"
-
-[dev-dependencies]
-httpmock = "0.7"
-tokio-test = "0.4"
-
-[[bin]]
-name = "api-server"
-path = "src/bin/api.rs"
-
-[[bin]]
-name = "indexer"
-path = "src/bin/indexer.rs"
-
-[profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1
+{
+  "name": "@noirwire/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "nest start --watch",
+    "build": "nest build",
+    "start": "node dist/main",
+    "lint": "eslint \"{src,test}/**/*.ts\"",
+    "test": "vitest",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.3.0",
+    "@nestjs/core": "^10.3.0",
+    "@nestjs/platform-express": "^10.3.0",
+    "@nestjs/websockets": "^10.3.0",
+    "@nestjs/platform-socket.io": "^10.3.0",
+    "@noirwire/sdk": "workspace:*",
+    "@noirwire/types": "workspace:*",
+    "@noirwire/db": "workspace:*",
+    "@supabase/supabase-js": "^2.39.0",
+    "@solana/web3.js": "^1.91.0",
+    "ioredis": "^5.3.0",
+    "axios": "^1.6.0",
+    "uuid": "^9.0.0",
+    "class-validator": "^0.14.0",
+    "class-transformer": "^0.5.0"
+  },
+  "devDependencies": {
+    "@noirwire/config": "workspace:*",
+    "@nestjs/cli": "^10.3.0",
+    "@nestjs/testing": "^10.3.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.2.0"
+  }
+}
 ```
 
 ### Project Structure
 
 ```
-api_backend/
-├── Cargo.toml
-├── Dockerfile
-├── railway.toml
-├── .env.example
-│
+apps/api/
 ├── src/
-│   ├── lib.rs
+│   ├── main.ts                      # NestJS entry point
+│   ├── app.module.ts                # Root module
 │   │
-│   ├── bin/
-│   │   ├── api.rs                   # API server entry point
-│   │   └── indexer.rs               # Indexer worker entry point
+│   ├── modules/
+│   │   ├── transfers/
+│   │   │   ├── transfers.controller.ts
+│   │   │   ├── transfers.service.ts
+│   │   │   └── transfers.module.ts
+│   │   ├── deposits/
+│   │   ├── withdrawals/
+│   │   ├── pool/
+│   │   │   ├── pool.controller.ts    # GET /pool/info, /stats
+│   │   │   └── pool.service.ts
+│   │   ├── transactions/
+│   │   │   └── transactions.controller.ts  # GET /transactions
+│   │   └── webhooks/
+│   │       ├── webhooks.controller.ts
+│   │       └── webhooks.service.ts
 │   │
-│   ├── api/
-│   │   ├── mod.rs
-│   │   ├── routes.rs                # Route definitions
-│   │   ├── handlers/
-│   │   │   ├── mod.rs
-│   │   │   ├── deposit.rs           # POST /deposit
-│   │   │   ├── transfer.rs          # POST /transfer
-│   │   │   ├── withdraw.rs          # POST /withdraw
-│   │   │   ├── pool.rs              # GET /pool/info, /stats
-│   │   │   ├── transactions.rs      # GET /transactions
-│   │   │   └── webhooks.rs          # Webhook management
-│   │   └── middleware/
-│   │       ├── mod.rs
-│   │       ├── auth.rs              # JWT validation
-│   │       ├── rate_limit.rs        # Redis-based rate limiting
-│   │       └── cors.rs
+│   ├── common/
+│   │   ├── filters/
+│   │   │   └── http-exception.filter.ts
+│   │   ├── guards/
+│   │   │   └── auth.guard.ts
+│   │   ├── interceptors/
+│   │   │   └── logging.interceptor.ts
+│   │   └── decorators/
 │   │
-│   ├── db/
-│   │   ├── mod.rs
-│   │   ├── supabase.rs              # Supabase client
-│   │   ├── models.rs                # Database models
-│   │   └── queries.rs               # SQL queries
+│   ├── per/                         # PER proxy client
+│   │   ├── per.module.ts
+│   │   └── per.service.ts           # HTTP client to PER Executor
 │   │
-│   ├── indexer/
-│   │   ├── mod.rs
-│   │   ├── event_listener.rs        # Solana event polling
-│   │   ├── parser.rs                # Parse program logs
-│   │   └── writer.rs                # Write to Supabase
+│   ├── cache/                       # Redis integration
+│   │   ├── cache.module.ts
+│   │   └── cache.service.ts
 │   │
-│   ├── webhooks/
-│   │   ├── mod.rs
-│   │   ├── dispatcher.rs            # Send webhook events
-│   │   └── queue.rs                 # Retry queue
-│   │
-│   ├── cache/
-│   │   ├── mod.rs
-│   │   └── redis_client.rs          # Redis wrapper
-│   │
-│   ├── per/
-│   │   ├── mod.rs
-│   │   └── client.rs                # PER RPC client
-│   │
-│   └── utils/
-│       ├── mod.rs
-│       ├── config.rs                # Environment config
-│       └── metrics.rs               # Prometheus metrics
+│   └── config/
+│       └── configuration.ts
 │
-├── migrations/                       # Supabase migrations
-│   └── 001_initial_schema.sql
+├── test/
+│   ├── unit/
+│   └── e2e/
 │
-└── tests/
-    ├── integration_test.rs
-    └── api_test.rs
+├── .env.example
+├── nest-cli.json
+├── tsconfig.json
+├── package.json
+└── Dockerfile
 ```
 
 ---
@@ -385,6 +335,80 @@ CREATE INDEX idx_batch_settlements_new_root ON batch_settlements(new_root);
 COMMENT ON TABLE batch_settlements IS 'PER batch settlements to L1';
 
 -- =====================================================
+-- VAULTS TABLE
+-- =====================================================
+-- Vaults are containers with permission groups (via PER)
+-- "Solo user = vault of 1 member" - unified balance model
+-- See: Vault_research.md for architecture
+CREATE TABLE vaults (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    vault_id BYTEA NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    admin_pubkey BYTEA NOT NULL,
+    permission_group BYTEA NOT NULL,  -- PER Permission Program group ID
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+    CONSTRAINT vault_name_not_empty CHECK (length(name) > 0)
+);
+
+CREATE INDEX idx_vaults_admin ON vaults(admin_pubkey);
+CREATE INDEX idx_vaults_created ON vaults(created_at DESC);
+CREATE INDEX idx_vaults_vault_id ON vaults(vault_id);
+CREATE INDEX idx_vaults_permission_group ON vaults(permission_group);
+
+COMMENT ON TABLE vaults IS 'Vault containers (members managed via PER Permission Program)';
+
+-- =====================================================
+-- VAULT MEMBERS TABLE (Audit Log)
+-- =====================================================
+-- Note: Actual permissions are managed via PER Permission Program
+-- This table tracks membership history for audit/UI purposes
+CREATE TABLE vault_members (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    vault_id UUID NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
+    member_pubkey BYTEA NOT NULL,
+    role VARCHAR(10) NOT NULL,  -- 'Viewer', 'Member', 'Admin'
+    added_at TIMESTAMPTZ DEFAULT NOW(),
+    removed_at TIMESTAMPTZ,
+
+    CONSTRAINT vault_members_unique UNIQUE(vault_id, member_pubkey),
+    CONSTRAINT valid_vault_role CHECK (role IN ('Viewer', 'Member', 'Admin'))
+);
+
+CREATE INDEX idx_vault_members_vault ON vault_members(vault_id);
+CREATE INDEX idx_vault_members_pubkey ON vault_members(member_pubkey);
+CREATE INDEX idx_vault_members_active ON vault_members(vault_id) WHERE removed_at IS NULL;
+CREATE INDEX idx_vault_members_role ON vault_members(role);
+
+COMMENT ON TABLE vault_members IS 'Vault membership audit log (actual permissions via PER)';
+
+-- =====================================================
+-- VAULT TRANSACTIONS TABLE
+-- =====================================================
+CREATE TABLE vault_transactions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    vault_id UUID NOT NULL REFERENCES vaults(id) ON DELETE CASCADE,
+    tx_type VARCHAR(20) NOT NULL,
+    initiator_pubkey BYTEA NOT NULL,
+    nullifier BYTEA,
+    new_commitment BYTEA,
+    tx_signature TEXT NOT NULL,
+    block_time TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+
+    CONSTRAINT valid_tx_type CHECK (tx_type IN ('create', 'add_member', 'remove_member', 'transfer', 'rotate_admin')),
+    CONSTRAINT vault_tx_signature_unique UNIQUE (tx_signature)
+);
+
+CREATE INDEX idx_vault_txs_vault ON vault_transactions(vault_id);
+CREATE INDEX idx_vault_txs_type ON vault_transactions(tx_type);
+CREATE INDEX idx_vault_txs_created ON vault_transactions(created_at DESC);
+CREATE INDEX idx_vault_txs_nullifier ON vault_transactions(nullifier) WHERE nullifier IS NOT NULL;
+
+COMMENT ON TABLE vault_transactions IS 'Audit log for all vault operations';
+
+-- =====================================================
 -- WEBHOOK SUBSCRIPTIONS TABLE
 -- =====================================================
 CREATE TABLE webhook_subscriptions (
@@ -437,6 +461,8 @@ SELECT
     (SELECT COUNT(*) FROM deposits) as total_deposits_count,
     (SELECT COUNT(*) FROM withdrawals) as total_withdrawals_count,
     (SELECT COUNT(*) FROM batch_settlements) as total_batches_count,
+    (SELECT COUNT(*) FROM vaults) as total_vaults_count,
+    (SELECT COUNT(DISTINCT member_pubkey) FROM vault_members WHERE removed_at IS NULL) as total_vault_members_count,
     (SELECT COALESCE(SUM(amount), 0) FROM deposits) as total_deposited,
     (SELECT COALESCE(SUM(amount), 0) FROM withdrawals) as total_withdrawn,
     (SELECT COALESCE(SUM(amount), 0) FROM deposits) -
@@ -456,11 +482,32 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- =====================================================
+-- TRIGGERS
+-- =====================================================
+
+-- Auto-update vault updated_at timestamp
+CREATE OR REPLACE FUNCTION update_vault_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_update_vault_updated_at
+    BEFORE UPDATE ON vaults
+    FOR EACH ROW
+    EXECUTE FUNCTION update_vault_updated_at();
+
+-- =====================================================
 -- ENABLE SUPABASE REALTIME
 -- =====================================================
 ALTER PUBLICATION supabase_realtime ADD TABLE deposits;
 ALTER PUBLICATION supabase_realtime ADD TABLE withdrawals;
 ALTER PUBLICATION supabase_realtime ADD TABLE batch_settlements;
+ALTER PUBLICATION supabase_realtime ADD TABLE vaults;
+ALTER PUBLICATION supabase_realtime ADD TABLE vault_members;
+ALTER PUBLICATION supabase_realtime ADD TABLE vault_transactions;
 
 -- =====================================================
 -- ROW LEVEL SECURITY (RLS)
@@ -468,6 +515,9 @@ ALTER PUBLICATION supabase_realtime ADD TABLE batch_settlements;
 ALTER TABLE deposits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE withdrawals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE batch_settlements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vaults ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vault_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vault_transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE webhook_subscriptions ENABLE ROW LEVEL SECURITY;
 
 -- Public read access for transactions
@@ -478,6 +528,16 @@ CREATE POLICY "Public read withdrawals" ON withdrawals
     FOR SELECT USING (true);
 
 CREATE POLICY "Public read batches" ON batch_settlements
+    FOR SELECT USING (true);
+
+-- Public read access for vaults (privacy maintained via ZK proofs)
+CREATE POLICY "Public read vaults" ON vaults
+    FOR SELECT USING (true);
+
+CREATE POLICY "Public read vault members" ON vault_members
+    FOR SELECT USING (true);
+
+CREATE POLICY "Public read vault transactions" ON vault_transactions
     FOR SELECT USING (true);
 
 -- Authenticated users manage own webhooks
@@ -632,6 +692,268 @@ pub struct Transaction {
     pub amount: i64,
     pub tx_signature: String,
     pub block_time: DateTime<Utc>,
+}
+```
+
+### 3.1 Local Development Setup (Supabase CLI)
+
+For local development, NoirWire uses the **Supabase CLI** to run a local Supabase instance with PostgreSQL, PostgREST API, and Studio UI.
+
+> **See [00_turborepo_structure.md](00_turborepo_structure.md#11-supabase-local-development)** for complete Supabase local development setup.
+
+#### Quick Start
+
+```bash
+# 1. Install Supabase CLI
+brew install supabase/tap/supabase
+
+# 2. Initialize Supabase in project (if not already done)
+supabase init
+
+# 3. Start local Supabase
+supabase start
+
+# Output:
+#   Started supabase local development setup.
+#   API URL: http://localhost:54321
+#   DB URL: postgresql://postgres:postgres@localhost:54322/postgres
+#   Studio URL: http://localhost:54323
+#   anon key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+# 4. Access Studio (database UI)
+open http://localhost:54323
+
+# 5. Run migrations (apply schema)
+supabase db reset
+```
+
+#### Migrations Workflow
+
+**1. Create Migration**
+
+Instead of running SQL in Supabase SQL Editor, create migration files:
+
+```bash
+# Create new migration
+supabase migration new initial_schema
+
+# This creates: supabase/migrations/<timestamp>_initial_schema.sql
+```
+
+**2. Write Migration SQL**
+
+Edit the generated file (`supabase/migrations/20260101000000_initial_schema.sql`):
+
+```sql
+-- migrations/001_initial_schema.sql becomes:
+-- supabase/migrations/20260101000000_initial_schema.sql
+
+-- Copy the schema from section 3 above
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+CREATE TABLE deposits (
+    -- ... full schema from above
+);
+
+-- ... rest of tables
+```
+
+**3. Apply Migration Locally**
+
+```bash
+# Reset DB and apply all migrations
+supabase db reset
+
+# This:
+# - Drops local database
+# - Recreates it
+# - Applies all migrations in supabase/migrations/
+# - Runs supabase/seed.sql (if exists)
+```
+
+**4. Generate TypeScript Types**
+
+```bash
+# Generate types from local database
+supabase gen types typescript --local > packages/db/src/generated/database.types.ts
+
+# Or use the monorepo script:
+yarn supabase:types
+```
+
+**5. Push to Remote (Production)**
+
+```bash
+# Link to remote Supabase project
+supabase link --project-ref your-project-ref
+
+# Push migrations to production
+supabase db push
+
+# This applies local migrations to remote database
+```
+
+#### Seed Data for Testing
+
+Create `supabase/seed.sql` for test data:
+
+```sql
+-- supabase/seed.sql
+-- Automatically runs after migrations during `supabase db reset`
+
+-- Insert test deposits
+INSERT INTO deposits (commitment, amount, new_root, tx_signature, block_time, slot) VALUES
+  (decode('aaaa0000000000000000000000000000000000000000000000000000000000aa', 'hex'),
+   1000000000,
+   decode('bbbb0000000000000000000000000000000000000000000000000000000000bb', 'hex'),
+   '5DqE1g...',
+   NOW() - INTERVAL '1 hour',
+   12345);
+
+-- Insert test vault
+INSERT INTO vaults (vault_id, name, members_root, admin_pubkey) VALUES
+  (decode('1111000000000000000000000000000000000000000000000000000000000011', 'hex'),
+   'Test DAO Treasury',
+   decode('2222000000000000000000000000000000000000000000000000000000000022', 'hex'),
+   decode('3333000000000000000000000000000000000000000000000000000000000033', 'hex'));
+
+-- Subscribe test webhooks
+INSERT INTO webhook_subscriptions (user_id, endpoint_url, secret_key, events) VALUES
+  ('test_user_1', 'http://localhost:3000/webhook', 'test_secret', ARRAY['deposit', 'withdraw']);
+```
+
+#### VS Code Integration
+
+**Install Supabase Extension:**
+
+1. Open VS Code Extensions
+2. Search for **"Supabase"** (official extension)
+3. Install
+
+**Features:**
+
+- Browse database tables/views directly in VS Code
+- GitHub Copilot integration (`@supabase` in chat)
+- Auto-generate migrations with `@supabase /migration create ...`
+- Generate TypeScript types with one click
+
+**VS Code Settings (`.vscode/settings.json`):**
+
+```json
+{
+  "supabase.projectId": "local",
+  "[sql]": {
+    "editor.defaultFormatter": "ms-ossdata.vscode-postgresql"
+  }
+}
+```
+
+#### Environment Variables
+
+**Local Development (`.env`):**
+
+```bash
+# Supabase Local
+SUPABASE_URL=http://localhost:54321
+SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+# Get these from `supabase start` output
+```
+
+**Production (Railway/Cloud):**
+
+```bash
+# Supabase Cloud
+SUPABASE_URL=https://xxxxx.supabase.co
+SUPABASE_ANON_KEY=your-production-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-production-service-role-key
+```
+
+#### Common Commands
+
+```bash
+# Start local Supabase
+supabase start
+
+# Stop local Supabase
+supabase stop
+
+# Reset database (reapply migrations + seed)
+supabase db reset
+
+# Create new migration
+supabase migration new <migration_name>
+
+# Generate TypeScript types
+supabase gen types typescript --local > packages/db/src/generated/database.types.ts
+
+# View database status
+supabase status
+
+# Access Studio (database UI)
+open http://localhost:54323
+
+# View logs
+supabase logs db
+```
+
+#### Database Client (Type-Safe)
+
+**`packages/db/src/client.ts`:**
+
+```typescript
+import { createClient } from "@supabase/supabase-js";
+import type { Database } from "./generated/database.types";
+
+const supabaseUrl = process.env.SUPABASE_URL || "http://localhost:54321";
+const supabaseKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY!;
+
+export const supabase = createClient<Database>(supabaseUrl, supabaseKey);
+
+// Fully typed queries!
+const { data: deposits } = await supabase
+  .from("deposits")
+  .select("*")
+  .gte("amount", 1000000000)
+  .order("block_time", { ascending: false })
+  .limit(10);
+
+// deposits is typed as Database['public']['Tables']['deposits']['Row'][]
+```
+
+#### Integration with API
+
+**In NestJS:**
+
+```typescript
+// apps/api/src/modules/deposits/deposits.service.ts
+import { Injectable } from "@nestjs/common";
+import { supabase } from "@noirwire/db";
+
+@Injectable()
+export class DepositsService {
+  async getAllDeposits() {
+    const { data, error } = await supabase
+      .from("deposits")
+      .select("*")
+      .order("block_time", { ascending: false });
+
+    if (error) throw error;
+    return data;
+  }
+
+  async getDepositByCommitment(commitment: Buffer) {
+    const { data, error } = await supabase
+      .from("deposits")
+      .select("*")
+      .eq("commitment", commitment)
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
 }
 ```
 
@@ -1689,15 +2011,15 @@ async fn test_deposit_endpoint() {
 
 ## Summary
 
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| **API Server** | Axum | REST API gateway |
-| **Database** | Supabase PostgreSQL | Transaction history |
-| **Cache** | Railway Redis | Rate limiting, caching |
-| **Indexer** | Tokio background worker | Event listener |
-| **Webhooks** | Reqwest + HMAC | Event notifications |
-| **Realtime** | Supabase Realtime | WebSocket subscriptions |
-| **Deployment** | Railway | Hosting & scaling |
+| Component      | Technology              | Purpose                 |
+| -------------- | ----------------------- | ----------------------- |
+| **API Server** | Axum                    | REST API gateway        |
+| **Database**   | Supabase PostgreSQL     | Transaction history     |
+| **Cache**      | Railway Redis           | Rate limiting, caching  |
+| **Indexer**    | Tokio background worker | Event listener          |
+| **Webhooks**   | Reqwest + HMAC          | Event notifications     |
+| **Realtime**   | Supabase Realtime       | WebSocket subscriptions |
+| **Deployment** | Railway                 | Hosting & scaling       |
 
 ---
 
