@@ -1,7 +1,10 @@
 use std::hash::poseidon2::Poseidon2;
 
+/// Domain separator for nullifiers (prevents hash collision attacks)
+global NULLIFIER_DOMAIN: Field = 0x02;
+
 /// Compute a nullifier for a commitment
-/// nullifier = H(commitment, secret_key, nonce)
+/// nullifier = H(domain || commitment || secret_key || nonce)
 ///
 /// Properties:
 /// - Deterministic: same inputs always produce same nullifier
@@ -12,7 +15,7 @@ pub fn compute_nullifier(
     secret_key: Field,
     nonce: Field
 ) -> Field {
-    Poseidon2::hash([commitment, secret_key, nonce], 3)
+    Poseidon2::hash([NULLIFIER_DOMAIN, commitment, secret_key, nonce], 4)
 }
 
 /// Verify a nullifier is correctly computed

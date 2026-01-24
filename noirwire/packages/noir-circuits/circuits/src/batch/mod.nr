@@ -5,7 +5,6 @@
 pub mod batch_2;
 pub mod batch_4;
 pub mod batch_8;
-// Additional batch sizes can be added as needed:
-// pub mod batch_16;
-// pub mod batch_32;
-// pub mod batch_64;
+pub mod batch_16;
+pub mod batch_32;
+pub mod batch_64;

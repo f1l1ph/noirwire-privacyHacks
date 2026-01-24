@@ -1,5 +1,8 @@
 use std::hash::poseidon2::Poseidon2;
 
+/// Domain separator for commitments (prevents hash collision attacks)
+global COMMITMENT_DOMAIN: Field = 0x01;
+
 /// Balance structure
 /// Used for both solo users and vault members
 pub struct Balance {
@@ -10,15 +13,16 @@ pub struct Balance {
 }
 
 /// Compute a commitment to a balance
-/// commitment = H(owner, amount, vault_id, blinding)
+/// commitment = H(domain || owner || amount || vault_id || blinding)
 pub fn compute_commitment(balance: Balance) -> Field {
     let inputs = [
+        COMMITMENT_DOMAIN,
         balance.owner,
         balance.amount,
         balance.vault_id,
         balance.blinding
     ];
-    Poseidon2::hash(inputs, 4)
+    Poseidon2::hash(inputs, 5)
 }
 
 /// Verify a commitment matches the given balance
@@ -29,8 +33,14 @@ pub fn verify_commitment(
     vault_id: Field,
     blinding: Field
 ) -> bool {
-    let computed = Poseidon2::hash([owner, amount, vault_id, blinding], 4);
+    let computed = Poseidon2::hash([COMMITMENT_DOMAIN, owner, amount, vault_id, blinding], 5);
     computed == commitment
+}
+
+/// Derive owner identifier from secret key
+/// owner = H(secret_key)
+pub fn derive_owner(secret_key: Field) -> Field {
+    Poseidon2::hash([secret_key], 1)
 }
 
 #[test]
@@ -50,4 +60,34 @@ fn test_commitment() {
         balance.vault_id,
         balance.blinding
     ));
+}
+
+#[test]
+fn test_commitment_deterministic() {
+    let balance = Balance {
+        owner: 1,
+        amount: 100,
+        vault_id: 0,
+        blinding: 12345
+    };
+    let c1 = compute_commitment(balance);
+    let c2 = compute_commitment(balance);
+    assert(c1 == c2);
+}
+
+#[test]
+fn test_commitment_different_blinding() {
+    let b1 = Balance {
+        owner: 1,
+        amount: 100,
+        vault_id: 0,
+        blinding: 111
+    };
+    let b2 = Balance {
+        owner: 1,
+        amount: 100,
+        vault_id: 0,
+        blinding: 222
+    };
+    assert(compute_commitment(b1) != compute_commitment(b2));
 }
