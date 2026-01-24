@@ -1,7 +1,7 @@
-use anchor_lang::prelude::*;
-use crate::state::*;
 use crate::errors::PoolError;
 use crate::events::EmergencyPauseEvent;
+use crate::state::*;
+use anchor_lang::prelude::*;
 
 #[derive(Accounts)]
 pub struct SetPaused<'info> {

@@ -110,8 +110,9 @@ fn negate_g1(point: &[u8; 64]) -> Result<[u8; 64]> {
     // p = 21888242871839275222246405745257275088696311157297823662689037894645226208583
     let p = BigUint::from_str_radix(
         "30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47",
-        16
-    ).map_err(|_| error!(VerifierError::Bn128Error))?;
+        16,
+    )
+    .map_err(|_| error!(VerifierError::Bn128Error))?;
 
     let mut result = *point;
 
@@ -123,8 +124,8 @@ fn negate_g1(point: &[u8; 64]) -> Result<[u8; 64]> {
     // Convert back to bytes (big-endian, padded to 32 bytes)
     let neg_y_bytes = neg_y.to_bytes_be();
     let padding = 32 - neg_y_bytes.len();
-    result[32..32+padding].fill(0);
-    result[32+padding..64].copy_from_slice(&neg_y_bytes);
+    result[32..32 + padding].fill(0);
+    result[32 + padding..64].copy_from_slice(&neg_y_bytes);
 
     Ok(result)
 }

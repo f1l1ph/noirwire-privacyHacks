@@ -13,8 +13,14 @@
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean && rm -rf node_modules",
-    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
-    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\""
+    "format": "yarn format:ts && yarn format:rust && yarn format:noir",
+    "format:check": "yarn format:check:ts && yarn format:check:rust && yarn format:check:noir",
+    "format:ts": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check:ts": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:rust": "cd packages/solana-programs && cargo fmt",
+    "format:check:rust": "cd packages/solana-programs && cargo fmt -- --check",
+    "format:noir": "cd packages/noir-circuits && PATH=\"$HOME/.nargo/bin:$PATH\" nargo fmt",
+    "format:check:noir": "cd packages/noir-circuits && PATH=\"$HOME/.nargo/bin:$PATH\" nargo fmt --check"
   },
   "devDependencies": {
     "turbo": "^2.7.5",

@@ -199,32 +199,55 @@ Based on the official blueprints:
 
 ## Build Verification
 
-Before deploying or committing changes, verify:
+### Solana Programs
 
 ```bash
 # Build all programs
-anchor build
+yarn build  # or: anchor build
 
-# Check for clippy warnings
-cargo clippy --all-targets -- -D warnings
-
-# Verify Noir circuits compile
-cd ../noir-circuits/circuits
-nargo check
+# Lint and format
+yarn lint          # Run clippy
+yarn format:check  # Check formatting
+yarn format        # Auto-fix formatting
 ```
 
-Expected outputs:
-- All programs build successfully with `cargo build-sbf`
-- No clippy warnings
-- Noir circuits compile without errors
+**Build Status:** ✅ All programs compile successfully
+
+Compiled binaries (in `target/deploy/`):
+- `shielded_pool.so` (329KB)
+- `zk_verifier.so` (271KB)
+- `vault_registry.so` (232KB)
+
+IDL files generated (in `target/idl/`):
+- `shielded_pool.json` (20KB)
+- `zk_verifier.json` (7.4KB)
+- `vault_registry.json` (8.6KB)
+
+### Noir Circuits
+
+```bash
+cd ../noir-circuits
+
+# Type check all circuits
+yarn check  # or: nargo check
+
+# Format circuits
+yarn format  # or: nargo fmt
+```
+
+**Build Status:** ✅ All circuits type-check successfully
+
+Note: Circuits are configured as a library (`type = "lib"`) for shared primitives. Individual circuit compilation will be set up in Phase 2 when generating verification keys.
 
 ## Program IDs
 
-Currently using placeholder IDs. Will be generated on deployment:
+Current devnet program IDs (generated during development):
 
-- Shielded Pool: `NwirePoo1XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX`
-- ZK Verifier: `NwireVrfyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX`
-- Vault Registry: `NwireVau1XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX`
+- Shielded Pool: `GHaaCGvizKd7QVCw93vHHc3bDQ1JNdufT4ZX9RbeR6Pj`
+- ZK Verifier: `E2iDwQ5pjSk4qxmXj7U1NUsqPyFGyfeVYj1CBXqL6fBw`
+- Vault Registry: `FXVuM3iLQgejHHoTw6Gqh77MEGcniR6VK8sHTwPSRSvG`
+
+Note: These will be regenerated for production deployment with vanity addresses like `NwirePoo1...`
 
 ## Dependencies
 

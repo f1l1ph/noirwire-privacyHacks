@@ -2,13 +2,13 @@ use anchor_lang::prelude::*;
 
 declare_id!("FXVuM3iLQgejHHoTw6Gqh77MEGcniR6VK8sHTwPSRSvG");
 
-pub mod state;
 pub mod errors;
 pub mod events;
+pub mod state;
 
-use state::*;
 use errors::*;
 use events::*;
+use state::*;
 
 #[program]
 pub mod vault_registry {
@@ -16,11 +16,7 @@ pub mod vault_registry {
 
     /// Create a new vault
     /// Calls PER Permission Program to create permission group
-    pub fn create_vault(
-        ctx: Context<CreateVault>,
-        vault_id: [u8; 32],
-        name: String,
-    ) -> Result<()> {
+    pub fn create_vault(ctx: Context<CreateVault>, vault_id: [u8; 32], name: String) -> Result<()> {
         require!(name.len() <= 32, VaultError::NameTooLong);
 
         let vault = &mut ctx.accounts.vault;

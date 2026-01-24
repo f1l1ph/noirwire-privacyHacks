@@ -1,7 +1,7 @@
-use anchor_lang::prelude::*;
-use crate::state::*;
 use crate::errors::PoolError;
 use crate::events::BatchSettlementEvent;
+use crate::state::*;
+use anchor_lang::prelude::*;
 
 #[derive(Accounts)]
 #[instruction(new_root: [u8; 32], nullifiers_root: [u8; 32], nullifier_count: u32)]

@@ -1,6 +1,6 @@
-use anchor_lang::prelude::*;
-use anchor_spl::token::{Token, TokenAccount, Mint};
 use crate::state::*;
+use anchor_lang::prelude::*;
+use anchor_spl::token::{Mint, Token, TokenAccount};
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
@@ -44,11 +44,7 @@ pub struct Initialize<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-pub fn handler(
-    ctx: Context<Initialize>,
-    token_mint: Pubkey,
-    vk_hash: [u8; 32],
-) -> Result<()> {
+pub fn handler(ctx: Context<Initialize>, token_mint: Pubkey, vk_hash: [u8; 32]) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
 
     pool.authority = ctx.accounts.authority.key();

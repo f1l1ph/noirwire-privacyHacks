@@ -1,8 +1,8 @@
-use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Token, TokenAccount, Transfer};
-use crate::state::*;
 use crate::errors::PoolError;
 use crate::events::WithdrawEvent;
+use crate::state::*;
+use anchor_lang::prelude::*;
+use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
 #[derive(Accounts)]
 #[instruction(amount: u64, nullifier: [u8; 32])]
@@ -76,11 +76,7 @@ pub fn handler(
 
     // Transfer tokens from pool to recipient
     let pool_key = pool.key();
-    let authority_seeds = &[
-        b"authority",
-        pool_key.as_ref(),
-        &[ctx.bumps.pool_authority],
-    ];
+    let authority_seeds = &[b"authority", pool_key.as_ref(), &[ctx.bumps.pool_authority]];
     let signer_seeds = &[&authority_seeds[..]];
 
     let transfer_ctx = CpiContext::new_with_signer(
@@ -98,7 +94,9 @@ pub fn handler(
     // TODO: Update merkle root with spent commitment
     let new_root = nullifier; // Placeholder
     pool.update_root(new_root);
-    pool.total_shielded = pool.total_shielded.checked_sub(amount)
+    pool.total_shielded = pool
+        .total_shielded
+        .checked_sub(amount)
         .ok_or(PoolError::Underflow)?;
     pool.total_withdrawals += 1;
     pool.total_nullifiers += 1;

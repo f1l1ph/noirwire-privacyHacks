@@ -1,8 +1,8 @@
-use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Token, TokenAccount, Transfer};
-use crate::state::*;
 use crate::errors::PoolError;
 use crate::events::DepositEvent;
+use crate::state::*;
+use anchor_lang::prelude::*;
+use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
 #[derive(Accounts)]
 #[instruction(amount: u64, commitment: [u8; 32])]
@@ -39,11 +39,7 @@ pub struct Deposit<'info> {
     pub token_program: Program<'info, Token>,
 }
 
-pub fn handler(
-    ctx: Context<Deposit>,
-    amount: u64,
-    commitment: [u8; 32],
-) -> Result<()> {
+pub fn handler(ctx: Context<Deposit>, amount: u64, commitment: [u8; 32]) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
 
     // TODO: Verify ZK proof that commitment is valid
@@ -64,7 +60,9 @@ pub fn handler(
     // TODO: Update merkle tree with commitment
     let new_root = commitment; // Placeholder - should compute new merkle root
     pool.update_root(new_root);
-    pool.total_shielded = pool.total_shielded.checked_add(amount)
+    pool.total_shielded = pool
+        .total_shielded
+        .checked_add(amount)
         .ok_or(PoolError::Overflow)?;
     pool.total_deposits += 1;
 

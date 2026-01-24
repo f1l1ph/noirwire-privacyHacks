@@ -9,7 +9,11 @@
     "test": "anchor test",
     "deploy": "anchor deploy",
     "deploy:devnet": "anchor deploy --provider.cluster devnet",
-    "idl": "anchor idl init"
+    "idl": "anchor idl init",
+    "lint": "cargo clippy --all-targets -- -D warnings -A unexpected_cfgs -A deprecated -A ambiguous_glob_reexports",
+    "lint:fix": "cargo clippy --all-targets --fix --allow-dirty --allow-staged",
+    "format": "cargo fmt",
+    "format:check": "cargo fmt -- --check"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1"

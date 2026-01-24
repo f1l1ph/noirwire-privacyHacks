@@ -40,7 +40,7 @@ impl VerificationKey {
         128 +       // delta_g2
         1 +         // ic_length
         4 + (ic_count * 64) +  // ic vector
-        1           // bump
+        1 // bump
     }
 }
 

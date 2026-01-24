@@ -1,0 +1,19 @@
+{
+  "name": "@noirwire/noir-circuits",
+  "version": "0.1.0",
+  "description": "NoirWire ZK Circuits - Privacy-preserving transaction circuits",
+  "private": true,
+  "scripts": {
+    "build": "PATH=\"$HOME/.nargo/bin:$PATH\" nargo check",
+    "check": "PATH=\"$HOME/.nargo/bin:$PATH\" nargo check",
+    "compile": "PATH=\"$HOME/.nargo/bin:$PATH\" nargo compile",
+    "format": "PATH=\"$HOME/.nargo/bin:$PATH\" nargo fmt",
+    "format:check": "PATH=\"$HOME/.nargo/bin:$PATH\" nargo fmt --check",
+    "lint": "PATH=\"$HOME/.nargo/bin:$PATH\" nargo check",
+    "test": "PATH=\"$HOME/.nargo/bin:$PATH\" nargo test",
+    "clean": "rm -rf circuits/target"
+  },
+  "engines": {
+    "nargo": ">=1.0.0-beta"
+  }
+}
