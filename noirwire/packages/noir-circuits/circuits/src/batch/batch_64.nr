@@ -3,8 +3,8 @@
 
 /// Public outputs of batch aggregation
 struct BatchPublic {
-    initial_root: Field,           // Starting merkle root
-    final_root: Field,             // Ending merkle root
+    initial_root: Field, // Starting merkle root
+    final_root: Field, // Ending merkle root
     batch_nullifiers: [Field; 64], // All nullifiers in batch
 }
 
@@ -17,18 +17,15 @@ struct BatchPrivate {
 
 /// Main batch aggregation circuit
 /// Aggregates 64 transaction proofs into a single proof
-fn main(
-    public: BatchPublic,
-    private: BatchPrivate
-) {
+fn main(public: BatchPublic, private: BatchPrivate) {
     // Verify chain continuity using loop
     assert(private.proof_data[0][1] == public.initial_root);
-    
+
     for i in 0..63 {
         // Verify each proof's old_root matches previous proof's new_root
         assert(private.proof_data[i + 1][1] == private.proof_data[i][2]);
     }
-    
+
     assert(public.final_root == private.proof_data[63][2]);
 
     // Enforce each proof was individually verified upstream (flag = 1)
@@ -54,25 +51,19 @@ fn test_batch_64() {
     // Build mock proof data
     let mut proof_data: [[Field; 4]; 64] = [[0; 4]; 64];
     let mut batch_nullifiers: [Field; 64] = [0; 64];
-    
+
     for i in 0..64 {
-        let nullifier = 100 + i;
-        let old_root = 1000 + i;
-        let new_root = 1000 + i + 1;
-        
+        let nullifier: Field = (100 + i) as Field;
+        let old_root: Field = (1000 + i) as Field;
+        let new_root: Field = (1000 + i + 1) as Field;
+
         proof_data[i] = [nullifier, old_root, new_root, 1];
         batch_nullifiers[i] = nullifier;
     }
 
-    let public = BatchPublic {
-        initial_root: 1000,
-        final_root: 1064,
-        batch_nullifiers
-    };
+    let public = BatchPublic { initial_root: 1000, final_root: 1064, batch_nullifiers };
 
-    let private = BatchPrivate {
-        proof_data
-    };
+    let private = BatchPrivate { proof_data };
 
     main(public, private);
 }

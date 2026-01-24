@@ -2,7 +2,3 @@
 name = "noirwire_circuits"
 type = "lib"
 authors = ["NoirWire Team"]
-
-[dependencies]
-# Poseidon2 hash is NOW IN STDLIB (as of Noir 1.0.0-beta)
-# No external dependency needed! Use: use std::hash::poseidon2::Poseidon2;

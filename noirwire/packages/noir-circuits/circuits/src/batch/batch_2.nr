@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 // Batch circuit for aggregating exactly 2 proofs
 
 struct BatchPublic {
@@ -7,14 +9,11 @@ struct BatchPublic {
 }
 
 struct BatchPrivate {
-    proof_data_1: [Field; 3],  // [nullifier, old_root, new_root]
+    proof_data_1: [Field; 3], // [nullifier, old_root, new_root]
     proof_data_2: [Field; 3],
 }
 
-fn main(
-    public: BatchPublic,
-    private: BatchPrivate
-) {
+fn main(public: BatchPublic, private: BatchPrivate) {
     // Verify chain continuity
     assert(private.proof_data_1[1] == public.initial_root);
     assert(private.proof_data_2[1] == private.proof_data_1[2]);

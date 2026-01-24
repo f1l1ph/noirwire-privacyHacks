@@ -1,3 +1,4 @@
 pub mod commitment;
 pub mod nullifier;
 pub mod merkle;
+pub mod poseidon2;

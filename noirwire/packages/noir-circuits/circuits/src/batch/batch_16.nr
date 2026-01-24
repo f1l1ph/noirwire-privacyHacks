@@ -2,8 +2,8 @@
 
 /// Public outputs of batch aggregation
 struct BatchPublic {
-    initial_root: Field,           // Starting merkle root
-    final_root: Field,             // Ending merkle root
+    initial_root: Field, // Starting merkle root
+    final_root: Field, // Ending merkle root
     batch_nullifiers: [Field; 16], // All nullifiers in batch
 }
 
@@ -15,11 +15,8 @@ struct BatchPrivate {
 
 /// Main batch aggregation circuit
 /// Aggregates 16 transaction proofs into a single proof
-fn main(
-    public: BatchPublic,
-    private: BatchPrivate
-) {
-    // Verify chain continuity: root_0 → root_1 → ... → root_16
+fn main(public: BatchPublic, private: BatchPrivate) {
+    // Verify chain continuity: root_0 -> root_1 -> ... -> root_16
     assert(private.proof_data[0][1] == public.initial_root);
     for i in 1..16 {
         assert(private.proof_data[i][1] == private.proof_data[i - 1][2]);
@@ -49,7 +46,9 @@ fn test_batch_16() {
     let public = BatchPublic {
         initial_root: 1000,
         final_root: 1016,
-        batch_nullifiers: [100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115]
+        batch_nullifiers: [
+            100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115,
+        ],
     };
 
     let private = BatchPrivate {

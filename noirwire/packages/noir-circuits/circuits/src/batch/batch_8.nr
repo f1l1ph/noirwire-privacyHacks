@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 // Batch circuit for aggregating exactly 8 proofs
 
 struct BatchPublic {
@@ -17,10 +19,7 @@ struct BatchPrivate {
     proof_data_8: [Field; 3],
 }
 
-fn main(
-    public: BatchPublic,
-    private: BatchPrivate
-) {
+fn main(public: BatchPublic, private: BatchPrivate) {
     // Verify chain continuity
     assert(private.proof_data_1[1] == public.initial_root);
     assert(private.proof_data_2[1] == private.proof_data_1[2]);

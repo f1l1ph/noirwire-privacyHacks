@@ -5,17 +5,25 @@ mod primitives;
 mod core;
 mod batch;
 mod vault;
+mod tests;
 
 // Re-export primitives
-use primitives::commitment;
-use primitives::nullifier;
-use primitives::merkle;
+pub use primitives::{commitment, merkle, nullifier};
 
 // Re-export core circuits
-use core::deposit;
-use core::transfer;
-use core::withdraw;
+pub use core::{deposit, transfer, withdraw};
 
 // Re-export vault circuits
-use vault::membership;
-use vault::transfer as vault_transfer;
+pub use vault::{membership, transfer as vault_transfer};
+
+// Direct re-exports from merkle to ensure visibility
+pub use primitives::merkle::{
+    compute_intermediate_root, compute_merkle_root, MerkleProof, TREE_DEPTH, verify_batch_update,
+    verify_merkle_inclusion, verify_merkle_update,
+};
+
+// Minimal smoke test to confirm nargo test discovery works at crate root
+#[test]
+fn smoke() {
+    assert(1 == 1);
+}

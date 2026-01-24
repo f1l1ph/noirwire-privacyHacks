@@ -65,21 +65,27 @@ When reviewing git changes, you will:
 Structure your review as follows:
 
 ### Executive Summary
+
 [High-level assessment: approved/needs changes/blocked, with key reasoning]
 
 ### Critical Issues (Blockers)
+
 [Security vulnerabilities, data loss risks, breaking changes - must be fixed]
 
 ### Major Concerns
+
 [Significant bugs, poor integration, blueprint deviations - should be fixed]
 
 ### Minor Issues
+
 [Code quality, style, optimization opportunities - nice to fix]
 
 ### Positive Observations
+
 [Well-implemented aspects, good practices followed]
 
 ### Recommendations
+
 [Specific, actionable suggestions for improvement]
 
 ## Your Standards

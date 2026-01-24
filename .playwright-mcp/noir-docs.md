@@ -1,0 +1,203 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - region "Skip to main content":
+      - link "Skip to main content" [ref=e3] [cursor=pointer]:
+        - /url: "#\_\_docusaurus_skipToContent_fallback"
+    - navigation "Main" [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e6]:
+          - link "Noir Logo" [ref=e7] [cursor=pointer]:
+            - /url: /docs/
+            - img "Noir Logo" [ref=e9]
+          - button "v1.0.0-beta.18" [ref=e11] [cursor=pointer]
+        - generic [ref=e12]:
+          - link "GitHub(opens in new tab)" [ref=e13] [cursor=pointer]:
+            - /url: https://github.com/noir-lang/noir/tree/master/docs
+            - text: GitHub
+            - img "(opens in new tab)" [ref=e14]
+          - link "ACIR reference(opens in new tab)" [ref=e16] [cursor=pointer]:
+            - /url: https://noir-lang.github.io/noir/docs/acir/circuit/index.html
+            - text: ACIR reference
+            - img "(opens in new tab)" [ref=e17]
+          - button "Switch between dark and light mode (currently dark mode)" [ref=e20] [cursor=pointer]:
+            - img [ref=e21]
+          - button "Search (Meta+k)" [ref=e24] [cursor=pointer]:
+            - generic [ref=e25]:
+              - img [ref=e26]
+              - generic [ref=e29]: Search
+            - generic [ref=e30]:
+              - img [ref=e32]
+              - img [ref=e35]
+          - button "Cookbook.dev Ask Noir AI Explain" [ref=e39] [cursor=pointer]:
+            - img "Cookbook.dev" [ref=e40]
+            - generic [ref=e41]:
+              - text: Ask Noir AI
+              - generic [ref=e42]: Explain
+    - generic [ref=e45]:
+      - complementary [ref=e46]:
+        - navigation "Docs sidebar" [ref=e49]:
+          - list [ref=e50]:
+            - listitem [ref=e51]:
+              - link "Noir Lang" [ref=e52] [cursor=pointer]:
+                - /url: /docs/
+                - generic "Noir Lang" [ref=e53]
+            - listitem [ref=e54]:
+              - button "Getting Started" [ref=e56] [cursor=pointer]:
+                - generic "Getting Started" [ref=e57]
+            - listitem [ref=e58]:
+              - button "The Noir Language" [ref=e60] [cursor=pointer]:
+                - generic "The Noir Language" [ref=e61]
+            - listitem [ref=e62]
+            - listitem [ref=e64]:
+              - button "How To Guides" [ref=e66] [cursor=pointer]:
+                - generic "How To Guides" [ref=e67]
+            - listitem [ref=e68]:
+              - button "Explainers" [ref=e70] [cursor=pointer]:
+                - generic "Explainers" [ref=e71]
+            - listitem [ref=e72]:
+              - button "Tutorials" [ref=e74] [cursor=pointer]:
+                - generic "Tutorials" [ref=e75]
+            - listitem [ref=e76]:
+              - button "Reference" [ref=e78] [cursor=pointer]:
+                - generic "Reference" [ref=e79]
+            - listitem [ref=e80]:
+              - button "Tooling" [ref=e82] [cursor=pointer]:
+                - generic "Tooling" [ref=e83]
+            - listitem [ref=e84]
+      - main [ref=e86]:
+        - generic [ref=e88]:
+          - generic [ref=e90]:
+            - article [ref=e91]:
+              - navigation "Breadcrumbs" [ref=e92]:
+                - list [ref=e93]:
+                  - listitem [ref=e94]:
+                    - link "Home page" [ref=e95] [cursor=pointer]:
+                      - /url: /docs/
+                      - img [ref=e96]
+                  - listitem [ref=e98]:
+                    - generic [ref=e99]: Noir Lang
+              - generic [ref=e100]: "Version: v1.0.0-beta.18"
+              - generic [ref=e101]:
+                - img "Noir Logo" [ref=e102]
+                - paragraph [ref=e103]: Noir is an open-source Domain-Specific Language for safe and seamless construction of privacy-preserving Zero-Knowledge programs, requiring no previous knowledge on the underlying mathematics or cryptography.
+                - paragraph [ref=e104]:
+                  - text: ZK programs are programs that can generate short proofs of statements without revealing all inputs to the statements. You can read more about Zero-Knowledge Proofs
+                  - link "here" [ref=e105] [cursor=pointer]:
+                    - /url: https://dev.to/spalladino/a-beginners-intro-to-coding-zero-knowledge-proofs-c56
+                  - text: .
+                - heading "What's new about Noir?Direct link to What's new about Noir?" [level=2] [ref=e106]:
+                  - text: What's new about Noir?
+                  - link "Direct link to What's new about Noir?" [ref=e107] [cursor=pointer]:
+                    - /url: "#whats-new-about-noir"
+                    - text: "#"
+                - paragraph [ref=e108]: Noir works differently from most ZK languages by taking a two-pronged path. First, it compiles the program to an adaptable intermediate language known as ACIR. From there, depending on a given project's needs, ACIR can be further compiled into an arithmetic circuit for integration with the proving backend.
+                - generic [ref=e109]:
+                  - generic [ref=e110]:
+                    - img [ref=e112]
+                    - text: info
+                  - generic [ref=e114]:
+                    - paragraph [ref=e115]:
+                      - text: Noir is backend agnostic, which means it makes no assumptions on which proving backend powers the ZK proof. Being the language that powers
+                      - link "Aztec Contracts" [ref=e116] [cursor=pointer]:
+                        - /url: https://docs.aztec.network/developers/contracts/main
+                      - text: ", it defaults to Aztec's Barretenberg proving backend."
+                    - paragraph [ref=e117]:
+                      - text: However, the ACIR output can be transformed to be compatible with other PLONK-based backends, or into a
+                      - link "rank-1 constraint system" [ref=e118] [cursor=pointer]:
+                        - /url: https://www.rareskills.io/post/rank-1-constraint-system
+                      - text: suitable for backends such as Arkwork's Marlin.
+                - heading "Who is Noir for?Direct link to Who is Noir for?" [level=2] [ref=e119]:
+                  - text: Who is Noir for?
+                  - link "Direct link to Who is Noir for?" [ref=e120] [cursor=pointer]:
+                    - /url: "#who-is-noir-for"
+                    - text: "#"
+                - paragraph [ref=e121]: "Noir can be used both in complex cloud-based backends and in user's smartphones, requiring no knowledge on the underlying math or cryptography. From authorization systems that keep a password in the user's device, to complex on-chain verification of recursive proofs, Noir is designed to abstract away complexity without any significant overhead. Here are some examples of situations where Noir can be used:"
+                - generic [ref=e122]:
+                  - tablist [ref=e123]:
+                    - tab "Aztec Contracts" [selected] [ref=e124] [cursor=pointer]
+                    - tab "Solidity Verifiers" [ref=e125] [cursor=pointer]
+                    - tab "Full-Stack Development" [ref=e126] [cursor=pointer]
+                  - tabpanel [ref=e128]:
+                    - img "Aztec word mark" [ref=e129]
+                    - paragraph [ref=e130]:
+                      - text: Aztec Contracts leverage Noir to allow for the storage and execution of private information. Writing an Aztec Contract is as easy as writing Noir, and Aztec developers can easily interact with the network storage and execution through the
+                      - link "Aztec.nr" [ref=e131] [cursor=pointer]:
+                        - /url: https://docs.aztec.network/developers/contracts/main
+                      - text: library.
+                - heading "LibrariesDirect link to Libraries" [level=2] [ref=e132]:
+                  - text: Libraries
+                  - link "Direct link to Libraries" [ref=e133] [cursor=pointer]:
+                    - /url: "#libraries"
+                    - text: "#"
+                - paragraph [ref=e134]:
+                  - text: Noir is meant to be easy to extend by simply importing Noir libraries just like in Rust. The
+                  - link "awesome-noir repo" [ref=e135] [cursor=pointer]:
+                    - /url: https://github.com/noir-lang/awesome-noir#libraries
+                  - text: is a collection of libraries developed by the Noir community. Writing a new library is easy and makes code be composable and easy to reuse. See the section on
+                  - link "dependencies" [ref=e136] [cursor=pointer]:
+                    - /url: /docs/noir/modules_packages_crates/dependencies
+                  - text: for more information.
+              - link "Edit this page" [ref=e140] [cursor=pointer]:
+                - /url: https://github.com/noir-lang/noir/edit/master/docs/versioned_docs/version-v1.0.0-beta.18/index.mdx
+                - img [ref=e141]
+                - text: Edit this page
+            - navigation "Docs pages" [ref=e145]:
+              - link "Next Quick Start »" [ref=e146] [cursor=pointer]:
+                - /url: /docs/getting_started/quick_start
+                - generic [ref=e147]: Next
+                - generic [ref=e148]: Quick Start »
+          - list [ref=e151]:
+            - listitem [ref=e152]:
+              - link "What's new about Noir?" [ref=e153] [cursor=pointer]:
+                - /url: "#whats-new-about-noir"
+            - listitem [ref=e154]:
+              - link "Who is Noir for?" [ref=e155] [cursor=pointer]:
+                - /url: "#who-is-noir-for"
+            - listitem [ref=e156]:
+              - link "Libraries" [ref=e157] [cursor=pointer]:
+                - /url: "#libraries"
+    - contentinfo [ref=e158]:
+      - generic [ref=e159]:
+        - generic [ref=e160]:
+          - generic [ref=e161]:
+            - heading "Stay up to date with Noir" [level=3] [ref=e162]
+            - generic [ref=e164]:
+              - textbox "Enter email" [ref=e165]
+              - button [disabled] [ref=e166]:
+                - img [ref=e167]
+          - generic [ref=e170]:
+            - generic [ref=e171]:
+              - generic [ref=e172]: Community
+              - list [ref=e173]:
+                - listitem [ref=e174]:
+                  - link "Noir Forum" [ref=e175] [cursor=pointer]:
+                    - /url: https://forum.aztec.network/c/noir/7
+                    - text: Noir Forum
+                    - img [ref=e176]
+                - listitem [ref=e178]:
+                  - link "Discord" [ref=e179] [cursor=pointer]:
+                    - /url: https://discord.gg/JtqzkdeQ6G
+                    - text: Discord
+                    - img [ref=e180]
+                - listitem [ref=e182]:
+                  - link "Twitter" [ref=e183] [cursor=pointer]:
+                    - /url: https://twitter.com/NoirLang
+                    - text: Twitter
+                    - img [ref=e184]
+            - generic [ref=e186]:
+              - generic [ref=e187]: Code
+              - list [ref=e188]:
+                - listitem [ref=e189]:
+                  - link "Noir GitHub" [ref=e190] [cursor=pointer]:
+                    - /url: https://github.com/noir-lang
+                    - text: Noir GitHub
+                    - img [ref=e191]
+                - listitem [ref=e193]:
+                  - link "Docs GitHub" [ref=e194] [cursor=pointer]:
+                    - /url: https://github.com/noir-lang/noir/tree/master/docs
+                    - text: Docs GitHub
+                    - img [ref=e195]
+        - generic [ref=e198]: Noir will be dual licensed under MIT/Apache (Version 2.0).
+  - generic:
+    - alert
+    - alert
