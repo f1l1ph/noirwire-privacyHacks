@@ -1,225 +1,87 @@
-# 02 — Noir Implementation Details
+# Noir Implementation Reference
 
-## Overview
+Technical reference for implementing ZK circuits in Noir. Focus on patterns, design choices, and practical examples.
 
-This blueprint provides detailed implementation guidance for the circuits defined in [01_Zk_Noir_Circuits.md](01_Zk_Noir_Circuits.md). It covers code organization, testing strategies, Solana verifier integration, and performance optimization.
-
----
-
-## Table of Contents
-
-1. [Project Setup](#1-project-setup)
-2. [Primitive Implementations](#2-primitive-implementations)
-3. [Core Circuit Code](#3-core-circuit-code)
-4. [Testing Strategy](#4-testing-strategy)
-5. [Solana Verifier Integration](#5-solana-verifier-integration)
-6. [Performance Optimization](#6-performance-optimization)
-7. [Development Workflow](#7-development-workflow)
-
----
-
-## 1. Project Setup
-
-### Initialize Noir Project
-
-```bash
-# Install Noir (nargo)
-curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash
-noirup
-
-# Create project
-nargo new noirwire_circuits
-cd noirwire_circuits
-```
-
-### Project Configuration
-
-```toml
-# Nargo.toml
-
-[package]
-name = "noirwire_circuits"
-type = "lib"
-authors = ["NoirWire Team"]
-compiler_version = ">=1.0.0-beta.18"
-# As of Jan 2026: Latest is v1.0.0-beta.18
-
-[dependencies]
-# ✅ Poseidon2 is NOW IN STDLIB - no external dependency needed!
-# Use: use std::hash::poseidon2::Poseidon2;
-
-# ZK-Kit Merkle Trees
-# Verify compatibility with your Noir version before use
-merkle_trees = {
-    git = "https://github.com/privacy-scaling-explorations/zk-kit.noir",
-    tag = "merkle-trees-v0.0.1",
-    directory = "packages/merkle-trees"
-}
-```
-
-> **Noir Version (Updated Jan 2026):**
->
-> - Current: **v1.0.0-beta.18** (beta, but production-ready)
-> - Poseidon2 hash is **built into stdlib** (use `std::hash::poseidon2::Poseidon2`)
-> - Check [github.com/noir-lang/noir/releases](https://github.com/noir-lang/noir/releases) for updates
-
-> **Poseidon2 Hash Usage:**
->
-> ```noir
-> use std::hash::poseidon2::Poseidon2;
->
-> // Hash fixed-size array:
-> fn compute_hash(inputs: [Field; 4]) -> Field {
->     Poseidon2::hash(inputs, 4)  // (input, message_size)
-> }
->
-> // Hash variable-length inputs:
-> use std::hash::Poseidon2Hasher;
-> fn hash_values(a: Field, b: Field, c: Field) -> Field {
->     let mut hasher = Poseidon2Hasher::default();
->     hasher.write(a);
->     hasher.write(b);
->     hasher.write(c);
->     hasher.finish()
-> }
-> ```
->
-> **Client-side hashing MUST use `@aztec/bb.js`** for compatibility with Barretenberg proofs.
-> The `poseidon2Hash()` function produces identical results to Noir's stdlib Poseidon2.
->
-> **References:**
->
-> - [Noir Poseidon2 stdlib](https://github.com/noir-lang/noir/blob/master/noir_stdlib/src/hash/poseidon2.nr)
-> - [Barretenberg TS API](https://github.com/AztecProtocol/barretenberg/tree/master/ts)
-> - [Client SDK Implementation](./31_Client_SDK.md#poseidon-hashing)
-
-### Directory Structure
+## Project Structure
 
 ```
-noirwire_circuits/
-├── Nargo.toml
-├── src/
-│   ├── lib.nr                      # Main exports
-│   │
-│   ├── primitives/
-│   │   ├── mod.nr
-│   │   ├── commitment.nr
-│   │   ├── nullifier.nr
-│   │   ├── merkle.nr
-│   │   └── types.nr                # Common types
-│   │
-│   ├── core/
-│   │   ├── mod.nr
-│   │   ├── deposit.nr
-│   │   ├── transfer.nr
-│   │   └── withdraw.nr
-│   │
-│   ├── vault/
-│   │   ├── mod.nr
-│   │   ├── membership.nr
-│   │   └── transfer.nr
-│   │
-│   └── batch/
-│       ├── mod.nr
-│       └── aggregator.nr
-│
-├── circuits/                        # Executable circuits
-│   ├── deposit/
-│   │   ├── Nargo.toml
-│   │   └── src/main.nr
-│   ├── transfer/
-│   │   ├── Nargo.toml
-│   │   └── src/main.nr
-│   └── ...
-│
+circuits/
+├── Nargo.toml              # Package configuration
+├── lib.nr                  # Main exports
+├── main.nr                 # Re-exports for testing
+├── primitives/
+│   ├── mod.nr              # Module re-exports
+│   ├── types.nr            # Shared type definitions
+│   ├── commitment.nr       # Balance commitment hashing
+│   ├── nullifier.nr        # Nullifier computation
+│   ├── merkle.nr           # Merkle tree operations
+│   └── poseidon2.nr        # Hash function (Poseidon2)
+├── core/
+│   ├── deposit.nr          # Shield circuit
+│   ├── transfer.nr         # Private transfer circuit
+│   └── withdraw.nr         # Unshield circuit
+├── vault/
+│   ├── membership.nr       # Vault membership proof
+│   └── transfer.nr         # Intra-vault transfer
+├── batch/
+│   ├── batch_2.nr          # Batch proof aggregation (2 proofs)
+│   ├── batch_4.nr
+│   ├── batch_8.nr
+│   ├── batch_16.nr
+│   ├── batch_32.nr
+│   └── batch_64.nr
 └── tests/
-    ├── deposit_test.nr
-    ├── transfer_test.nr
-    └── integration_test.nr
+    ├── commitment_tests.nr
+    ├── merkle_tests.nr
+    ├── deposit_tests.nr
+    ├── transfer_tests.nr
+    ├── withdraw_tests.nr
+    └── vault_tests.nr
 ```
 
----
-
-## 2. Primitive Implementations
-
-### 2.1 Types (`src/primitives/types.nr`)
+## Core Types
 
 ```noir
-// src/primitives/types.nr
+// primitives/types.nr
 
-/// Tree configuration
-/// Using 24 levels = 2^24 (~16M) possible leaves
-/// This provides sufficient capacity while keeping proofs manageable
 global TREE_DEPTH: u32 = 24;
-global NULLIFIER_TREE_DEPTH: u32 = 24;
-global VAULT_MEMBERS_DEPTH: u32 = 16; // 2^16 = 65k members max
+global COMMITMENT_DOMAIN: Field = 0x01;
+global NULLIFIER_DOMAIN: Field = 0x02;
 
-/// Balance stored in the shielded pool
 pub struct Balance {
-    pub owner: Field,      // Hash of public key
-    pub amount: Field,     // Token amount
+    pub owner: Field,      // Hash(public_key)
+    pub amount: Field,     // Token quantity
     pub salt: Field,       // Random blinding factor
-    pub vault_id: Field,   // 0 = solo, else vault identifier
+    pub vault_id: Field,   // 0 for solo, vault_id for member
 }
 
-impl Balance {
-    /// Create a new balance
-    pub fn new(owner: Field, amount: Field, salt: Field, vault_id: Field) -> Self {
-        Balance { owner, amount, salt, vault_id }
-    }
-
-    /// Create a solo user balance
-    pub fn solo(owner: Field, amount: Field, salt: Field) -> Self {
-        Balance { owner, amount, salt, vault_id: 0 }
-    }
-
-    /// Check if this is a solo balance
-    pub fn is_solo(self) -> bool {
-        self.vault_id == 0
-    }
-}
-
-/// Merkle proof for inclusion/exclusion
 pub struct MerkleProof<let N: u32> {
     pub siblings: [Field; N],
     pub path_indices: [u1; N],
 }
-
-/// Transfer note (encrypted for receiver)
-pub struct TransferNote {
-    pub amount: Field,
-    pub salt: Field,
-    pub sender_vault: Field,
-}
-
-/// Vault configuration
-pub struct VaultConfig {
-    pub vault_id: Field,
-    pub admin: Field,
-    pub members_root: Field,
-}
 ```
 
-### 2.2 Commitment (`src/primitives/commitment.nr`)
+## Primitives Module
+
+### Commitment
+
+Hashes balance information into a binding commitment. Used in all transaction circuits.
 
 ```noir
-// src/primitives/commitment.nr
+// primitives/commitment.nr
+use crate::primitives::types::{Balance, COMMITMENT_DOMAIN};
+use crate::primitives::poseidon2::Poseidon2;
 
-use std::hash::poseidon2::Poseidon2;
-use crate::primitives::types::Balance;
-
-/// Domain separator for commitments
-global COMMITMENT_DOMAIN: Field = 0x01;
-
-/// Compute a balance commitment
-/// commitment = H(domain || owner || amount || salt || vault_id)
 pub fn compute_commitment(balance: Balance) -> Field {
-    Poseidon2::hash(
-        [COMMITMENT_DOMAIN, balance.owner, balance.amount, balance.salt, balance.vault_id], 5
-    )
+    Poseidon2::hash([
+        COMMITMENT_DOMAIN,
+        balance.owner,
+        balance.amount,
+        balance.salt,
+        balance.vault_id
+    ], 5)
 }
 
-/// Compute commitment with explicit params
 pub fn compute_commitment_explicit(
     owner: Field,
     amount: Field,
@@ -229,45 +91,27 @@ pub fn compute_commitment_explicit(
     Poseidon2::hash([COMMITMENT_DOMAIN, owner, amount, salt, vault_id], 5)
 }
 
-/// Derive owner identifier from secret key
-/// owner = H(secret_key)
 pub fn derive_owner(secret_key: Field) -> Field {
+    // Owner is derived deterministically from secret
     Poseidon2::hash([secret_key], 1)
-}
-
-/// Check if two commitments match
-pub fn commitments_equal(a: Field, b: Field) -> bool {
-    a == b
-}
-
-#[test]
-fn test_commitment_deterministic() {
-    let balance = Balance::new(1, 100, 12345, 0);
-    let c1 = compute_commitment(balance);
-    let c2 = compute_commitment(balance);
-    assert(c1 == c2);
-}
-
-#[test]
-fn test_commitment_different_salt() {
-    let b1 = Balance::new(1, 100, 111, 0);
-    let b2 = Balance::new(1, 100, 222, 0);
-    assert(compute_commitment(b1) != compute_commitment(b2));
 }
 ```
 
-### 2.3 Nullifier (`src/primitives/nullifier.nr`)
+**Properties:**
+
+- Deterministic: Same inputs → same commitment
+- Binding: Cannot change parameters without changing commitment
+- Hiding: Commitment reveals nothing about individual components
+
+### Nullifier
+
+Prevents double-spending by computing a unique value per spendable commitment.
 
 ```noir
-// src/primitives/nullifier.nr
+// primitives/nullifier.nr
+use crate::primitives::types::NULLIFIER_DOMAIN;
+use crate::primitives::poseidon2::Poseidon2;
 
-use std::hash::poseidon2::Poseidon2;
-
-/// Domain separator for nullifiers
-global NULLIFIER_DOMAIN: Field = 0x02;
-
-/// Compute nullifier for spending a commitment
-/// nullifier = H(domain || commitment || secret_key || nonce)
 pub fn compute_nullifier(
     commitment: Field,
     secret_key: Field,
@@ -275,47 +119,28 @@ pub fn compute_nullifier(
 ) -> Field {
     Poseidon2::hash([NULLIFIER_DOMAIN, commitment, secret_key, nonce], 4)
 }
-
-/// Verify a nullifier is correct
-pub fn verify_nullifier(
-    expected_nullifier: Field,
-    commitment: Field,
-    secret_key: Field,
-    nonce: Field
-) -> bool {
-    let computed = compute_nullifier(commitment, secret_key, nonce);
-    computed == expected_nullifier
-}
-
-#[test]
-fn test_nullifier_deterministic() {
-    let n1 = compute_nullifier(123, 456, 789);
-    let n2 = compute_nullifier(123, 456, 789);
-    assert(n1 == n2);
-}
-
-#[test]
-fn test_nullifier_different_nonce() {
-    let n1 = compute_nullifier(123, 456, 1);
-    let n2 = compute_nullifier(123, 456, 2);
-    assert(n1 != n2);
-}
 ```
 
-### 2.4 Merkle Tree (`src/primitives/merkle.nr`)
+**Key Properties:**
+
+- Only secret key holder can compute valid nullifier
+- Same commitment with different nonce produces different nullifier
+- Nullifier is deterministic and publicly computable given secret
+- When revealed on-chain, commitment becomes unspendable
+
+### Merkle Tree
+
+Sparse Merkle tree with efficient inclusion/update proofs.
 
 ```noir
-// src/primitives/merkle.nr
+// primitives/merkle.nr
+use crate::primitives::types::MerkleProof;
+use crate::primitives::poseidon2::Poseidon2;
 
-use std::hash::poseidon2::Poseidon2;
-use crate::primitives::types::{TREE_DEPTH, MerkleProof};
-
-/// Compute the hash of two children
 fn hash_pair(left: Field, right: Field) -> Field {
     Poseidon2::hash([left, right], 2)
 }
 
-/// Verify a Merkle inclusion proof
 pub fn verify_inclusion<let N: u32>(
     leaf: Field,
     root: Field,
@@ -327,37 +152,18 @@ pub fn verify_inclusion<let N: u32>(
         let sibling = proof.siblings[i];
         let is_right = proof.path_indices[i];
 
-        // If path_index is 1, current is on the right
-        current = if is_right == 1 {
-            hash_pair(sibling, current)
-        } else {
-            hash_pair(current, sibling)
-        };
+        // Constrain to 0 or 1
+        assert((is_right == 0) | (is_right == 1));
+
+        // Arithmetic selection (more efficient than if/else)
+        let left_hash = hash_pair(current, sibling);
+        let right_hash = hash_pair(sibling, current);
+        current = left_hash + is_right * (right_hash - left_hash);
     }
 
     current == root
 }
 
-/// Compute leaf index from path indices
-pub fn path_to_index<let N: u32>(path_indices: [u1; N]) -> Field {
-    let mut index: Field = 0;
-    let mut power: Field = 1;
-
-    for i in 0..N {
-        if path_indices[i] == 1 {
-            index = index + power;
-        }
-        power = power * 2;
-    }
-
-    index
-}
-
-/// Verify a Merkle update (old leaf → new leaf)
-///
-/// NOTE: This implementation assumes the update happens at the same position
-/// (same path_indices). For batch updates where positions differ, use
-/// verify_batch_update() which handles non-sequential tree modifications.
 pub fn verify_update<let N: u32>(
     old_leaf: Field,
     new_leaf: Field,
@@ -365,83 +171,340 @@ pub fn verify_update<let N: u32>(
     new_root: Field,
     proof: MerkleProof<N>
 ) -> bool {
-    // Verify old leaf was at this position
+    // Verify old leaf is in tree
     let old_valid = verify_inclusion(old_leaf, old_root, proof);
 
-    // Compute new root with new leaf
+    // Recompute path with new leaf
     let mut current = new_leaf;
     for i in 0..N {
         let sibling = proof.siblings[i];
         let is_right = proof.path_indices[i];
 
-        current = if is_right == 1 {
-            hash_pair(sibling, current)
-        } else {
-            hash_pair(current, sibling)
-        };
+        let left_hash = hash_pair(current, sibling);
+        let right_hash = hash_pair(sibling, current);
+        current = left_hash + is_right * (right_hash - left_hash);
     }
 
     old_valid & (current == new_root)
 }
+```
 
-/// Verify batch tree update (multiple leaves at different positions)
-/// Optimized for non-sequential updates common in transfers
-pub fn verify_batch_update<let N: u32, let M: u32>(
-    updates: [(Field, Field, MerkleProof<N>); M],  // (old_leaf, new_leaf, proof) pairs
-    old_root: Field,
-    new_root: Field
-) -> bool {
-    // 1. Verify all old leaves exist in old tree
-    for i in 0..M {
-        let (old_leaf, _, proof) = updates[i];
-        assert(verify_inclusion(old_leaf, old_root, proof));
-    }
+**Algorithm:**
 
-    // 2. Apply all updates and verify final root
-    // This is more efficient than sequential updates when positions don't overlap
-    let mut intermediate_root = old_root;
+1. Start with leaf hash
+2. For each level, combine with sibling based on position
+3. Verify final hash matches root
 
-    for i in 0..M {
-        let (old_leaf, new_leaf, proof) = updates[i];
+**Complexity:**
 
-        // Compute intermediate root after this update
-        let mut current = new_leaf;
-        for j in 0..N {
-            let sibling = proof.siblings[j];
-            let is_right = proof.path_indices[j];
+- Verification: O(N) field operations for N-level tree
+- Space: O(N) field values for proof
+- For 24-level tree: 24 hashes, 24 comparisons
 
-            current = if is_right == 1 {
-                hash_pair(sibling, current)
-            } else {
-                hash_pair(current, sibling)
-            };
-        }
+## Core Circuits
 
-        intermediate_root = current;
-    }
+### Deposit Circuit
 
-    intermediate_root == new_root
+Proves creation of a valid private balance from public token deposit.
+
+```noir
+// core/deposit.nr
+use crate::primitives::commitment::compute_commitment_explicit;
+use crate::primitives::merkle::{MerkleProof, verify_update};
+use crate::primitives::types::TREE_DEPTH;
+
+fn main(
+    // Public inputs (visible on-chain)
+    deposit_amount: pub Field,
+    new_commitment: pub Field,
+    old_root: pub Field,
+    new_root: pub Field,
+
+    // Private inputs (revealed in zero-knowledge)
+    owner_pubkey: Field,
+    salt: Field,
+    vault_id: Field,
+    merkle_proof: MerkleProof<TREE_DEPTH>
+) {
+    // Verify commitment matches deposit
+    let computed = compute_commitment_explicit(owner_pubkey, deposit_amount, salt, vault_id);
+    assert(computed == new_commitment);
+
+    // Verify tree update: empty slot → new commitment
+    let empty_leaf: Field = 0;
+    assert(verify_update(empty_leaf, new_commitment, old_root, new_root, merkle_proof));
 }
+```
 
-/// Compute an empty tree root of given depth
-pub fn empty_tree_root<let N: u32>() -> Field {
-    let mut current: Field = 0; // Empty leaf
+**Flow:**
 
-    for _i in 0..N {
-        current = hash_pair(current, current);
-    }
+1. User deposits public token amount
+2. Circuit proves commitment hash is correct
+3. Circuit proves tree can be updated with commitment
+4. On-chain: tree root updated, commitment inserted
 
-    current
+**Constraints:** ~5K (single Merkle path verification)
+
+### Transfer Circuit
+
+Proves private-to-private transfer with balance conservation.
+
+```noir
+// core/transfer.nr
+use crate::primitives::commitment::compute_commitment_explicit;
+use crate::primitives::commitment::derive_owner;
+use crate::primitives::nullifier::compute_nullifier;
+use crate::primitives::merkle::{MerkleProof, verify_inclusion, verify_update};
+use crate::primitives::types::TREE_DEPTH;
+
+fn main(
+    // Public inputs
+    nullifier: pub Field,
+    old_root: pub Field,
+    new_root: pub Field,
+
+    // Private - Sender
+    sender_secret: Field,
+    sender_amount: Field,
+    sender_salt: Field,
+    sender_vault_id: Field,
+    sender_proof: MerkleProof<TREE_DEPTH>,
+
+    // Private - Transfer
+    transfer_amount: Field,
+    nonce: Field,
+
+    // Private - Receiver
+    receiver_pubkey: Field,
+    receiver_salt: Field,
+    receiver_vault_id: Field,
+
+    // Private - Tree updates
+    new_sender_salt: Field,
+    new_sender_proof: MerkleProof<TREE_DEPTH>,
+    receiver_proof: MerkleProof<TREE_DEPTH>,
+    intermediate_root: Field
+) {
+    let sender_pubkey = derive_owner(sender_secret);
+
+    // 1. Verify sender commitment exists in current tree
+    let sender_commitment = compute_commitment_explicit(
+        sender_pubkey, sender_amount, sender_salt, sender_vault_id
+    );
+    assert(verify_inclusion(sender_commitment, old_root, sender_proof));
+
+    // 2. Verify nullifier
+    let computed_nullifier = compute_nullifier(sender_commitment, sender_secret, nonce);
+    assert(computed_nullifier == nullifier);
+
+    // 3. Verify sufficient balance
+    assert((sender_amount as u64) >= (transfer_amount as u64));
+
+    // 4. Compute new state
+    let new_sender_amount = sender_amount - transfer_amount;
+    let new_sender_commitment = compute_commitment_explicit(
+        sender_pubkey, new_sender_amount, new_sender_salt, sender_vault_id
+    );
+    let receiver_commitment = compute_commitment_explicit(
+        receiver_pubkey, transfer_amount, receiver_salt, receiver_vault_id
+    );
+
+    // 5. Verify state transitions
+    // Sender: old_commitment → new_commitment (reduced amount)
+    assert(verify_update(sender_commitment, new_sender_commitment, old_root, intermediate_root, new_sender_proof));
+
+    // Receiver: empty → new_commitment (inserted)
+    assert(verify_update(0, receiver_commitment, intermediate_root, new_root, receiver_proof));
+}
+```
+
+**State Transitions:**
+
+```
+Before:  [sender_commitment @ idx_s] [empty @ idx_r]
+Transfer: Transfer amount from sender to receiver
+After:   [new_sender @ idx_s] [receiver_commitment @ idx_r]
+```
+
+**Proves:**
+
+- Sender balance exists in tree
+- Nullifier is correct (prevents double-spend)
+- Sufficient balance for transfer
+- New commitments correctly computed
+- Merkle tree validly updated
+
+**Constraints:** ~15K (two Merkle paths + nullifier + balance checks)
+
+### Withdraw Circuit
+
+Proves valid withdrawal from private balance to public address.
+
+```noir
+// core/withdraw.nr
+use crate::primitives::commitment::compute_commitment_explicit;
+use crate::primitives::commitment::derive_owner;
+use crate::primitives::nullifier::compute_nullifier;
+use crate::primitives::merkle::{MerkleProof, verify_inclusion, verify_update};
+use crate::primitives::types::TREE_DEPTH;
+
+fn main(
+    // Public inputs
+    nullifier: pub Field,
+    withdraw_amount: pub Field,
+    recipient_address: pub Field,
+    old_root: pub Field,
+    new_root: pub Field,
+
+    // Private inputs
+    owner_secret: Field,
+    balance_amount: Field,
+    salt: Field,
+    vault_id: Field,
+    merkle_proof: MerkleProof<TREE_DEPTH>,
+    nonce: Field
+) {
+    let owner_pubkey = derive_owner(owner_secret);
+
+    // 1. Verify commitment exists
+    let commitment = compute_commitment_explicit(
+        owner_pubkey, balance_amount, salt, vault_id
+    );
+    assert(verify_inclusion(commitment, old_root, merkle_proof));
+
+    // 2. Verify nullifier
+    let computed_nullifier = compute_nullifier(commitment, owner_secret, nonce);
+    assert(computed_nullifier == nullifier);
+
+    // 3. Verify sufficient balance
+    assert((balance_amount as u64) >= (withdraw_amount as u64));
+
+    // 4. Verify tree update (commitment removed)
+    assert(verify_update(commitment, 0, old_root, new_root, merkle_proof));
+}
+```
+
+**Proves:**
+
+- Balance exists in current tree
+- Correct nullifier (prevents double-withdrawal)
+- Sufficient balance for withdrawal
+- Commitment removed from tree (invalidates further transfers)
+
+**Constraints:** ~10K (one Merkle path + nullifier + balance check)
+
+## Batch Aggregation
+
+Multi-size batch circuits enable efficient proof aggregation for settlement.
+
+```noir
+// batch/batch_2.nr - Aggregate two proofs into one
+
+fn main(
+    // Public inputs
+    initial_root: pub Field,
+    final_root: pub Field,
+    batch_nullifiers: pub [Field; 2],
+
+    // Private - Proof 1
+    proof_1: [Field; 93],
+    vk_1: [Field; 114],
+    public_inputs_1: [Field; 3],
+
+    // Private - Proof 2
+    proof_2: [Field; 93],
+    vk_2: [Field; 114],
+    public_inputs_2: [Field; 3],
+
+    // Verification parameters
+    expected_vk_hash: Field
+) {
+    // Verify both proofs are valid
+    verify_proof(vk_1.as_slice(), proof_1.as_slice(), public_inputs_1.as_slice(), expected_vk_hash);
+    verify_proof(vk_2.as_slice(), proof_2.as_slice(), public_inputs_2.as_slice(), expected_vk_hash);
+
+    // Extract state from proofs
+    let nullifier_1 = public_inputs_1[0];
+    let old_root_1 = public_inputs_1[1];
+    let new_root_1 = public_inputs_1[2];
+
+    let nullifier_2 = public_inputs_2[0];
+    let old_root_2 = public_inputs_2[1];
+    let new_root_2 = public_inputs_2[2];
+
+    // Verify chain: proof1 old_root → new_root → proof2 old_root → new_root
+    assert(old_root_1 == initial_root);
+    assert(old_root_2 == new_root_1);
+    assert(new_root_2 == final_root);
+
+    // Collect nullifiers for on-chain verification
+    assert(batch_nullifiers[0] == nullifier_1);
+    assert(batch_nullifiers[1] == nullifier_2);
+}
+```
+
+**Recursion Pattern:**
+
+For larger batches, compose batch circuits:
+
+```
+batch_4 = batch_2(batch_2_1, batch_2_2)
+batch_8 = batch_4(batch_4_1, batch_4_2)
+batch_16 = batch_8(batch_8_1, batch_8_2)
+...
+```
+
+This allows decomposing any transaction count into minimal proofs.
+
+## Testing Patterns
+
+### Unit Tests
+
+Test individual primitives in isolation:
+
+```noir
+#[test]
+fn test_commitment_deterministic() {
+    let owner = 12345;
+    let amount = 1000;
+    let salt = 54321;
+    let vault = 0;
+
+    let c1 = compute_commitment_explicit(owner, amount, salt, vault);
+    let c2 = compute_commitment_explicit(owner, amount, salt, vault);
+
+    assert(c1 == c2);  // Same inputs produce same commitment
 }
 
 #[test]
-fn test_inclusion_proof() {
-    // Simple 2-level tree
+fn test_commitment_changes_with_amount() {
+    let owner = 12345;
+    let salt = 54321;
+    let vault = 0;
+
+    let c1 = compute_commitment_explicit(owner, 1000, salt, vault);
+    let c2 = compute_commitment_explicit(owner, 2000, salt, vault);
+
+    assert(c1 != c2);  // Different amount changes commitment
+}
+
+#[test]
+fn test_nullifier_unique_per_nonce() {
+    let commitment = 999;
+    let secret = 111;
+
+    let n1 = compute_nullifier(commitment, secret, 1);
+    let n2 = compute_nullifier(commitment, secret, 2);
+
+    assert(n1 != n2);  // Different nonce produces different nullifier
+}
+
+#[test]
+fn test_merkle_inclusion() {
     let leaf = 42;
     let sibling_0 = 10;
     let sibling_1 = 20;
 
-    // Compute expected root
     let level_1 = hash_pair(leaf, sibling_0);
     let root = hash_pair(level_1, sibling_1);
 
@@ -452,683 +515,133 @@ fn test_inclusion_proof() {
 
     assert(verify_inclusion(leaf, root, proof));
 }
-```
-
----
-
-## 3. Core Circuit Code
-
-### 3.1 Deposit Circuit (`circuits/deposit/src/main.nr`)
-
-```noir
-// circuits/deposit/src/main.nr
-
-use noirwire_circuits::primitives::commitment::{compute_commitment_explicit, derive_owner};
-use noirwire_circuits::primitives::merkle::{verify_update, path_to_index};
-use noirwire_circuits::primitives::types::{TREE_DEPTH, MerkleProof};
-
-/// Deposit (shield) public funds into the private pool
-fn main(
-    // ===== PUBLIC INPUTS =====
-    /// Amount being deposited (visible on L1)
-    deposit_amount: pub Field,
-    /// The new commitment being added
-    new_commitment: pub Field,
-    /// Tree root before deposit
-    old_root: pub Field,
-    /// Tree root after deposit
-    new_root: pub Field,
-    /// Leaf index where commitment is inserted
-    leaf_index: pub Field,
-
-    // ===== PRIVATE INPUTS =====
-    /// Depositor's public key (hash of secret)
-    owner_pubkey: Field,
-    /// Random salt for hiding
-    salt: Field,
-    /// Vault ID (0 for solo)
-    vault_id: Field,
-    /// Merkle proof for the insertion position
-    merkle_proof: MerkleProof<TREE_DEPTH>
-) {
-    // 1. Verify commitment is correctly computed
-    let computed_commitment = compute_commitment_explicit(
-        owner_pubkey,
-        deposit_amount,
-        salt,
-        vault_id
-    );
-    assert(
-        computed_commitment == new_commitment,
-        "Commitment mismatch"
-    );
-
-    // 2. Verify the leaf position was empty (0)
-    // and is now the new commitment
-    let empty_leaf: Field = 0;
-
-    assert(
-        verify_update(
-            empty_leaf,
-            new_commitment,
-            old_root,
-            new_root,
-            merkle_proof
-        ),
-        "Invalid merkle update"
-    );
-
-    // 3. Verify leaf index matches proof path
-    let computed_index = path_to_index(merkle_proof.path_indices);
-    assert(
-        computed_index == leaf_index,
-        "Leaf index mismatch"
-    );
-}
-```
-
-### 3.2 Transfer Circuit (`circuits/transfer/src/main.nr`)
-
-```noir
-// circuits/transfer/src/main.nr
-
-use noirwire_circuits::primitives::commitment::{compute_commitment_explicit, derive_owner};
-use noirwire_circuits::primitives::nullifier::compute_nullifier;
-use noirwire_circuits::primitives::merkle::{verify_inclusion, verify_update};
-use noirwire_circuits::primitives::types::{TREE_DEPTH, MerkleProof, Balance};
-
-/// Private transfer between two parties
-fn main(
-    // ===== PUBLIC INPUTS =====
-    /// Nullifier (prevents double-spend)
-    nullifier: pub Field,
-    /// Root before transfer
-    old_root: pub Field,
-    /// Root after transfer
-    new_root: pub Field,
-
-    // ===== PRIVATE INPUTS - SENDER =====
-    /// Sender's secret key
-    sender_secret: Field,
-    /// Sender's current balance amount
-    sender_amount: Field,
-    /// Sender's balance salt
-    sender_salt: Field,
-    /// Sender's vault ID
-    sender_vault_id: Field,
-    /// Merkle proof for sender's balance
-    sender_proof: MerkleProof<TREE_DEPTH>,
-
-    // ===== PRIVATE INPUTS - TRANSFER =====
-    /// Amount to transfer
-    transfer_amount: Field,
-    /// Nonce for nullifier
-    nonce: Field,
-
-    // ===== PRIVATE INPUTS - RECEIVER =====
-    /// Receiver's public key (hash)
-    receiver_pubkey: Field,
-    /// Receiver's new salt
-    receiver_salt: Field,
-    /// Receiver's vault ID
-    receiver_vault_id: Field,
-
-    // ===== PRIVATE INPUTS - NEW SENDER BALANCE =====
-    /// New salt for sender's remaining balance
-    new_sender_salt: Field,
-    /// Merkle proof for new sender position
-    new_sender_proof: MerkleProof<TREE_DEPTH>,
-    /// Merkle proof for receiver position
-    receiver_proof: MerkleProof<TREE_DEPTH>,
-    /// Intermediate root (after nullifying sender, before adding receiver)
-    intermediate_root: Field
-) {
-    // ===== DERIVE VALUES =====
-    let sender_pubkey = derive_owner(sender_secret);
-
-    // ===== SENDER VERIFICATION =====
-
-    // 1. Reconstruct sender's commitment
-    let sender_commitment = compute_commitment_explicit(
-        sender_pubkey,
-        sender_amount,
-        sender_salt,
-        sender_vault_id
-    );
-
-    // 2. Verify sender's commitment exists in old tree
-    assert(
-        verify_inclusion(sender_commitment, old_root, sender_proof),
-        "Sender commitment not in tree"
-    );
-
-    // 3. Verify nullifier is correct
-    let computed_nullifier = compute_nullifier(sender_commitment, sender_secret, nonce);
-    assert(
-        computed_nullifier == nullifier,
-        "Invalid nullifier"
-    );
-
-    // 4. Verify sufficient balance
-    // Using safe comparison (as u64 to prevent overflow attacks)
-    let sender_u64 = sender_amount as u64;
-    let transfer_u64 = transfer_amount as u64;
-    assert(
-        sender_u64 >= transfer_u64,
-        "Insufficient balance"
-    );
-
-    // ===== BALANCE CONSERVATION =====
-
-    let new_sender_amount = sender_amount - transfer_amount;
-
-    // ===== COMPUTE NEW COMMITMENTS =====
-
-    // New sender commitment (with remaining balance)
-    let new_sender_commitment = compute_commitment_explicit(
-        sender_pubkey,
-        new_sender_amount,
-        new_sender_salt,
-        sender_vault_id
-    );
-
-    // Receiver commitment
-    let receiver_commitment = compute_commitment_explicit(
-        receiver_pubkey,
-        transfer_amount,
-        receiver_salt,
-        receiver_vault_id
-    );
-
-    // ===== VERIFY STATE TRANSITIONS =====
-
-    // Step 1: Old sender → New sender
-    // (replaces old commitment with new one)
-    assert(
-        verify_update(
-            sender_commitment,
-            new_sender_commitment,
-            old_root,
-            intermediate_root,
-            new_sender_proof
-        ),
-        "Invalid sender update"
-    );
-
-    // Step 2: Add receiver commitment
-    // (insert into empty slot)
-    let empty_leaf: Field = 0;
-    assert(
-        verify_update(
-            empty_leaf,
-            receiver_commitment,
-            intermediate_root,
-            new_root,
-            receiver_proof
-        ),
-        "Invalid receiver insertion"
-    );
-}
-```
-
-### 3.3 Batch Aggregator (`circuits/batch_aggregator/src/main.nr`)
-
-```noir
-// circuits/batch_aggregator/src/main.nr
-
-use std::verify_proof;
-
-/// Verification key hash type
-type VkHash = Field;
-
-/// Aggregate two transaction proofs into one
-fn main(
-    // ===== PUBLIC INPUTS =====
-    /// Initial state root (start of batch)
-    initial_root: pub Field,
-    /// Final state root (end of batch)
-    final_root: pub Field,
-    /// Nullifiers revealed in this batch
-    batch_nullifiers: pub [Field; 2],
-
-    // ===== PRIVATE INPUTS - PROOF 1 =====
-    proof_1: [Field; 93],           // Proof data (size varies by backend)
-    vk_1: [Field; 114],             // Verification key
-    public_inputs_1: [Field; 3],    // [nullifier, old_root, new_root]
-
-    // ===== PRIVATE INPUTS - PROOF 2 =====
-    proof_2: [Field; 93],
-    vk_2: [Field; 114],
-    public_inputs_2: [Field; 3],
-
-    // ===== VERIFICATION KEY HASH =====
-    /// Expected VK hash (ensures we're verifying the right circuit type)
-    expected_vk_hash: VkHash
-) {
-    // ===== VERIFY PROOF 1 =====
-
-    // Verify the proof cryptographically
-    verify_proof(
-        vk_1.as_slice(),
-        proof_1.as_slice(),
-        public_inputs_1.as_slice(),
-        expected_vk_hash
-    );
-
-    // Extract public inputs
-    let nullifier_1 = public_inputs_1[0];
-    let old_root_1 = public_inputs_1[1];
-    let new_root_1 = public_inputs_1[2];
-
-    // ===== VERIFY PROOF 2 =====
-
-    verify_proof(
-        vk_2.as_slice(),
-        proof_2.as_slice(),
-        public_inputs_2.as_slice(),
-        expected_vk_hash
-    );
-
-    let nullifier_2 = public_inputs_2[0];
-    let old_root_2 = public_inputs_2[1];
-    let new_root_2 = public_inputs_2[2];
-
-    // ===== VERIFY CHAIN =====
-
-    // Proof 1 starts at initial_root
-    assert(
-        old_root_1 == initial_root,
-        "Proof 1 doesn't start at initial root"
-    );
-
-    // Proof 2 continues where proof 1 ended
-    assert(
-        old_root_2 == new_root_1,
-        "Proofs not chained correctly"
-    );
-
-    // Batch ends at final_root
-    assert(
-        new_root_2 == final_root,
-        "Batch doesn't end at final root"
-    );
-
-    // ===== COLLECT NULLIFIERS =====
-
-    assert(batch_nullifiers[0] == nullifier_1);
-    assert(batch_nullifiers[1] == nullifier_2);
-}
-```
-
----
-
-## 4. Testing Strategy
-
-### Unit Tests
-
-```noir
-// tests/deposit_test.nr
-
-use noirwire_circuits::primitives::commitment::compute_commitment_explicit;
-use noirwire_circuits::primitives::merkle::{verify_inclusion, empty_tree_root};
 
 #[test]
-fn test_deposit_commitment() {
-    let owner = 0x1234;
-    let amount = 1000;
-    let salt = 0xabcd;
-    let vault_id = 0;
+fn test_merkle_update() {
+    let old_leaf = 42;
+    let new_leaf = 99;
+    let sibling_0 = 10;
+    let sibling_1 = 20;
 
-    let commitment = compute_commitment_explicit(owner, amount, salt, vault_id);
+    let old_level_1 = hash_pair(old_leaf, sibling_0);
+    let old_root = hash_pair(old_level_1, sibling_1);
 
-    // Commitment should be deterministic
-    let commitment_2 = compute_commitment_explicit(owner, amount, salt, vault_id);
-    assert(commitment == commitment_2);
+    let new_level_1 = hash_pair(new_leaf, sibling_0);
+    let new_root = hash_pair(new_level_1, sibling_1);
 
-    // Different salt = different commitment
-    let commitment_diff_salt = compute_commitment_explicit(owner, amount, 0xdead, vault_id);
-    assert(commitment != commitment_diff_salt);
-}
+    let proof = MerkleProof {
+        siblings: [sibling_0, sibling_1],
+        path_indices: [0, 0]
+    };
 
-#[test]
-fn test_empty_tree() {
-    let root = empty_tree_root::<4>();
-    // Root should be non-zero
-    assert(root != 0);
+    assert(verify_update(old_leaf, new_leaf, old_root, new_root, proof));
 }
 ```
 
 ### Integration Tests
 
+Test circuit interaction:
+
 ```noir
-// tests/integration_test.nr
-
-use noirwire_circuits::primitives::*;
-
 #[test]
-fn test_full_deposit_flow() {
-    // Setup: Create empty tree
-    let initial_root = empty_tree_root::<4>();
-
-    // User deposits 1000 tokens
-    let owner = derive_owner(0x12345);
+fn test_deposit_then_withdraw() {
+    // Setup
+    let owner_pubkey = 100;
     let amount = 1000;
-    let salt = 0xabcdef;
+    let salt = 999;
+    let vault = 0;
 
-    let commitment = compute_commitment_explicit(owner, amount, salt, 0);
+    // Deposit
+    let commitment = compute_commitment_explicit(owner_pubkey, amount, salt, vault);
+    let merkle_proof = MerkleProof { /* ... */ };
 
-    // Verify commitment can be included
-    // (In real test, would compute actual merkle proof)
-    assert(commitment != 0);
-}
+    assert(verify_update(0, commitment, old_root, new_root, merkle_proof));
 
-#[test]
-fn test_transfer_conservation() {
-    // Sender has 1000, transfers 400
-    let sender_balance = 1000;
-    let transfer_amount = 400;
-    let sender_remaining = sender_balance - transfer_amount;
+    // Withdraw
+    let secret = 200;  // Secret corresponding to pubkey
+    let nonce = 1;
+    let nullifier = compute_nullifier(commitment, secret, nonce);
 
-    // Verify conservation
-    assert(sender_remaining + transfer_amount == sender_balance);
-
-    // Verify no overflow
-    assert((sender_balance as u64) >= (transfer_amount as u64));
+    assert(verify_inclusion(commitment, new_root, merkle_proof));
+    assert(verify_update(commitment, 0, new_root, final_root, merkle_proof));
 }
 ```
 
-### Property-Based Testing
+## Implementation Guidelines
 
-```bash
-# Run with fuzzing (requires nargo with fuzzing support)
-nargo test --fuzz
-```
+### 1. Range Checks for Safety
 
----
-
-## 5. Solana Verifier Integration
-
-### Proof Generation (Off-chain)
-
-```typescript
-// prover/src/index.ts
-
-import { compile, createWitness } from "@noir-lang/noir_js";
-import { BarretenbergBackend } from "@noir-lang/backend_barretenberg";
-
-export async function generateDepositProof(
-  depositAmount: bigint,
-  ownerPubkey: string,
-  salt: bigint,
-  vaultId: bigint,
-  merkleProof: MerkleProof,
-): Promise<{ proof: Uint8Array; publicInputs: string[] }> {
-  // 1. Compile circuit
-  const circuit = await compile("circuits/deposit");
-
-  // 2. Create backend
-  const backend = new BarretenbergBackend(circuit);
-
-  // 3. Create witness
-  const witness = await createWitness(circuit, {
-    deposit_amount: depositAmount.toString(),
-    owner_pubkey: ownerPubkey,
-    salt: salt.toString(),
-    vault_id: vaultId.toString(),
-    merkle_proof: merkleProof,
-  });
-
-  // 4. Generate proof
-  const { proof, publicInputs } = await backend.generateProof(witness);
-
-  return { proof, publicInputs };
-}
-```
-
-### Solana Verifier (On-chain)
-
-The Solana verifier uses the `alt_bn128_pairing` syscall for Groth16 verification.
-
-```rust
-// programs/verifier/src/lib.rs
-
-use anchor_lang::prelude::*;
-use solana_program::alt_bn128::prelude::*;
-
-declare_id!("NoirVerifier11111111111111111111111111111");
-
-#[program]
-pub mod noir_verifier {
-    use super::*;
-
-    /// Verify a Noir proof on Solana
-    pub fn verify(
-        ctx: Context<Verify>,
-        proof: [u8; 256],          // Serialized proof
-        public_inputs: Vec<[u8; 32]>,
-        vk_hash: [u8; 32],
-    ) -> Result<()> {
-        // 1. Deserialize proof components
-        let (a, b, c) = deserialize_proof(&proof)?;
-
-        // 2. Load verification key
-        let vk = &ctx.accounts.verification_key;
-        require!(
-            vk.hash == vk_hash,
-            VerifierError::InvalidVerificationKey
-        );
-
-        // 3. Compute pairing inputs
-        let pairing_input = prepare_pairing_input(
-            &a, &b, &c,
-            &public_inputs,
-            &vk.data
-        )?;
-
-        // 4. Call alt_bn128_pairing syscall
-        let result = alt_bn128_pairing(&pairing_input)?;
-
-        // 5. Check pairing result
-        require!(
-            result == PAIRING_ONE,
-            VerifierError::InvalidProof
-        );
-
-        // 6. Emit verification event
-        emit!(ProofVerified {
-            vk_hash,
-            public_inputs_hash: hash_public_inputs(&public_inputs),
-            timestamp: Clock::get()?.unix_timestamp,
-        });
-
-        Ok(())
-    }
-}
-
-#[derive(Accounts)]
-pub struct Verify<'info> {
-    /// Verification key account
-    #[account(
-        seeds = [b"vk", vk_hash.as_ref()],
-        bump
-    )]
-    pub verification_key: Account<'info, VerificationKey>,
-
-    /// Payer
-    #[account(mut)]
-    pub payer: Signer<'info>,
-}
-
-#[account]
-pub struct VerificationKey {
-    pub hash: [u8; 32],
-    pub data: Vec<u8>,  // Serialized VK
-}
-
-#[event]
-pub struct ProofVerified {
-    pub vk_hash: [u8; 32],
-    pub public_inputs_hash: [u8; 32],
-    pub timestamp: i64,
-}
-
-#[error_code]
-pub enum VerifierError {
-    #[msg("Invalid verification key")]
-    InvalidVerificationKey,
-    #[msg("Invalid proof")]
-    InvalidProof,
-    #[msg("Deserialization error")]
-    DeserializationError,
-}
-```
-
----
-
-## 6. Performance Optimization
-
-### Constraint Counts
-
-| Circuit          | Estimated Constraints | Notes                        |
-| ---------------- | --------------------- | ---------------------------- |
-| Deposit          | ~5,000                | Single merkle path           |
-| Transfer         | ~15,000               | Two merkle paths + nullifier |
-| Withdraw         | ~10,000               | One path + nullifier         |
-| Batch (2 proofs) | ~200,000              | Recursive verification       |
-
-### Optimization Techniques
+Always validate type conversions to prevent overflow:
 
 ```noir
-// 1. Use unconstrained functions for non-critical computations
-unconstrained fn compute_hints(data: [Field; 100]) -> [Field; 50] {
-    // Complex computation that doesn't need proving
-    // Just provides hints for the prover
-    // ...
-}
-
-// 2. Minimize Field→u64 conversions
-fn safe_subtract(a: Field, b: Field) -> Field {
-    // Verify non-negative before operation
-    let a_u64 = a as u64;
-    let b_u64 = b as u64;
-    assert(a_u64 >= b_u64);
-    a - b  // Field arithmetic is cheaper
-}
-
-// 3. Batch hash operations
-fn batch_hash_4(inputs: [Field; 4]) -> Field {
-    // More efficient than 4 separate hashes
-    Poseidon2::hash(inputs, 4)
-}
-
-// 4. Use constants for repeated values
-global ZERO: Field = 0;
-global ONE: Field = 1;
+// Ensure amount fits in u64
+let amount_u64 = amount as u64;
+let amount_back = amount_u64 as Field;
+assert(amount == amount_back);
 ```
 
-### Proving Time Estimates
+### 2. Domain Separation
 
-| Environment       | Deposit | Transfer | Batch |
-| ----------------- | ------- | -------- | ----- |
-| Server (64 cores) | ~1s     | ~3s      | ~10s  |
-| Browser (WASM)    | ~5s     | ~15s     | ~60s  |
-| Mobile            | ~10s    | ~30s     | ~120s |
+Use distinct domains for different hash operations:
 
----
+```noir
+global COMMITMENT_DOMAIN: Field = 0x01;
+global NULLIFIER_DOMAIN: Field = 0x02;
+global MERKLE_DOMAIN: Field = 0x03;
+```
 
-## 7. Development Workflow
+This prevents hash collisions between operation types.
 
-### Local Development
+### 3. Efficient Conditionals
+
+Prefer arithmetic selection over if/else for constraints:
+
+```noir
+// ✅ Preferred (arithmetic)
+let left_hash = hash_pair(current, sibling);
+let right_hash = hash_pair(sibling, current);
+current = left_hash + is_right * (right_hash - left_hash);
+
+// ❌ Avoid (conditional)
+current = if is_right == 1 { ... } else { ... };
+```
+
+### 4. Constraint Minimization
+
+- Reuse computed values instead of recomputing
+- Use global constants for repeated values
+- Combine related assertions when possible
+
+## Verification & Testing Workflow
 
 ```bash
-# 1. Compile all circuits
-nargo compile --workspace
+# Compile all circuits
+nargo compile
 
-# 2. Run tests
+# Run all tests
 nargo test
 
-# 3. Generate proofs locally
-nargo prove -p circuits/deposit
+# Format code
+nargo fmt
 
-# 4. Verify proofs
-nargo verify -p circuits/deposit
+# Check diagnostics
+nargo check
 ```
 
-### CI/CD Pipeline
+## Performance Characteristics
 
-```yaml
-# .github/workflows/circuits.yml
+| Circuit  | Constraints | Proving Time | Proof Size |
+| -------- | ----------- | ------------ | ---------- |
+| Deposit  | ~5K         | ~1s          | 256 bytes  |
+| Transfer | ~15K        | ~3s          | 256 bytes  |
+| Withdraw | ~10K        | ~2s          | 256 bytes  |
+| Batch 2  | ~200K       | ~10s         | 256 bytes  |
 
-name: Noir Circuits CI
-
-on: [push, pull_request]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Noir
-        run: |
-          curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash
-          noirup --version 1.0.0
-
-      - name: Compile
-        run: nargo compile --workspace
-
-      - name: Test
-        run: nargo test
-
-      - name: Format check
-        run: nargo fmt --check
-```
-
-### Debugging
-
-```noir
-// Use println for debugging (removed in production)
-use std::println;
-
-fn debug_transfer(sender_amount: Field, transfer_amount: Field) {
-    println(f"Sender amount: {sender_amount}");
-    println(f"Transfer amount: {transfer_amount}");
-
-    let remaining = sender_amount - transfer_amount;
-    println(f"Remaining: {remaining}");
-}
-```
-
----
-
-## Summary
-
-This blueprint provides:
-
-1. **Complete primitive implementations** for commitments, nullifiers, and merkle trees
-2. **Full circuit code** for deposit, transfer, and batch aggregation
-3. **Testing strategy** with unit, integration, and property-based tests
-4. **Solana verifier integration** using alt_bn128 pairing
-5. **Performance optimization** techniques and estimates
-6. **Development workflow** for local and CI/CD
-
-**Next Steps:**
-
-- Implement vault-specific circuits (membership proofs)
-- Set up Barretenberg backend for proof generation
-- Deploy verifier contract to Solana devnet
-- Integrate with MagicBlock PER
-
----
+All proofs have same size (Groth16). Constraint count affects proving time, not output.
 
 ## References
 
-- [Noir Standard Library](https://noir-lang.org/docs/noir/standard_library)
+- [Noir Documentation](https://noir-lang.org/docs/)
 - [Barretenberg Backend](https://github.com/AztecProtocol/barretenberg)
-- [Solana alt_bn128 Syscalls](https://docs.solana.com/developing/runtime-facilities/programs#bn254-operations)
-- [ZK-Kit Noir](https://github.com/privacy-scaling-explorations/zk-kit.noir)
-
----
-
-_Blueprint Version: 1.0_
-_Status: Ready for Implementation_
+- [Poseidon Hash](https://www.poseidon-hash.info/)
+- [Merkle Tree Proofs](https://en.wikipedia.org/wiki/Merkle_tree)
