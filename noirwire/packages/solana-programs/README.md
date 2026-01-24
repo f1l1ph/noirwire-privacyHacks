@@ -131,12 +131,14 @@ Based on the official blueprints:
 ### Implementation Notes
 
 **Blueprint Adherence:**
+
 - Program structure: 100% matches blueprint
 - Account definitions: 100% matches blueprint
 - PDA derivation patterns: Follows blueprint exactly
 - Error handling: Custom errors as specified
 
 **Deviations (Temporary for PoC):**
+
 - `HISTORICAL_ROOTS_SIZE = 8` instead of 900 (stack limit constraint)
 - Deposit/Withdraw instructions missing `ProofData` parameter (added in Phase 2)
 - ZK verification stubbed (requires alt_bn128 integration)
@@ -155,6 +157,7 @@ Based on the official blueprints:
 - [ ] Test with actual Groth16 proofs from Noir circuits
 
 **Files needing ZK integration:**
+
 - `programs/shielded-pool/src/instructions/deposit.rs:49` - Add proof verification
 - `programs/shielded-pool/src/instructions/withdraw.rs:68` - Add proof verification
 - `programs/shielded-pool/src/instructions/settle_batch.rs:33` - Add batch proof verification
@@ -214,11 +217,13 @@ yarn format        # Auto-fix formatting
 **Build Status:** ✅ All programs compile successfully
 
 Compiled binaries (in `target/deploy/`):
+
 - `shielded_pool.so` (329KB)
 - `zk_verifier.so` (271KB)
 - `vault_registry.so` (232KB)
 
 IDL files generated (in `target/idl/`):
+
 - `shielded_pool.json` (20KB)
 - `zk_verifier.json` (7.4KB)
 - `vault_registry.json` (8.6KB)

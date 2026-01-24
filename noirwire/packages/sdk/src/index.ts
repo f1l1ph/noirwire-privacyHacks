@@ -4,12 +4,7 @@ import axios, { AxiosInstance } from "axios";
 import { Connection, PublicKey } from "@solana/web3.js";
 import * as bip39 from "bip39";
 import nacl from "tweetnacl";
-import type {
-  NoirWireWalletConfig,
-  Balance,
-  ZkProof,
-  ApiResponse,
-} from "@noirwire/types";
+import type { NoirWireWalletConfig, Balance, ZkProof, ApiResponse } from "@noirwire/types";
 import { generateSalt, bytesToHex } from "@noirwire/utils";
 
 // ============================================
@@ -44,9 +39,7 @@ export class NoirWireWallet {
   /**
    * Generate a new wallet with random keys
    */
-  static generate(
-    config: NoirWireWalletConfig = { network: "devnet" },
-  ): NoirWireWallet {
+  static generate(config: NoirWireWalletConfig = { network: "devnet" }): NoirWireWallet {
     const keyPair = nacl.sign.keyPair();
     return new NoirWireWallet(keyPair.secretKey, config);
   }
@@ -188,15 +181,12 @@ export class NoirWireClient {
     };
 
     // Send deposit request to API
-    const response = await this.api.post<ApiResponse<{ signature: string }>>(
-      "/deposits",
-      {
-        commitment: bytesToHex(new Uint8Array(32)), // TODO: Calculate real commitment
-        amount: amount.toString(),
-        proof: proof.proof,
-        publicInputs: proof.publicInputs,
-      },
-    );
+    const response = await this.api.post<ApiResponse<{ signature: string }>>("/deposits", {
+      commitment: bytesToHex(new Uint8Array(32)), // TODO: Calculate real commitment
+      amount: amount.toString(),
+      proof: proof.proof,
+      publicInputs: proof.publicInputs,
+    });
 
     if (!response.data.success) {
       throw new Error(response.data.error || "Deposit failed");
@@ -223,17 +213,14 @@ export class NoirWireClient {
     };
 
     // Send transfer request to API
-    const response = await this.api.post<ApiResponse<{ signature: string }>>(
-      "/transfers",
-      {
-        nullifier: bytesToHex(new Uint8Array(32)), // TODO: Calculate real nullifier
-        newCommitment: bytesToHex(new Uint8Array(32)), // TODO: Calculate real commitment
-        recipient: recipientPubkey,
-        amount: amount.toString(),
-        proof: proof.proof,
-        publicInputs: proof.publicInputs,
-      },
-    );
+    const response = await this.api.post<ApiResponse<{ signature: string }>>("/transfers", {
+      nullifier: bytesToHex(new Uint8Array(32)), // TODO: Calculate real nullifier
+      newCommitment: bytesToHex(new Uint8Array(32)), // TODO: Calculate real commitment
+      recipient: recipientPubkey,
+      amount: amount.toString(),
+      proof: proof.proof,
+      publicInputs: proof.publicInputs,
+    });
 
     if (!response.data.success) {
       throw new Error(response.data.error || "Transfer failed");
@@ -260,16 +247,13 @@ export class NoirWireClient {
     };
 
     // Send withdraw request to API
-    const response = await this.api.post<ApiResponse<{ signature: string }>>(
-      "/withdrawals",
-      {
-        nullifier: bytesToHex(new Uint8Array(32)), // TODO: Calculate real nullifier
-        recipient: recipientAddress,
-        amount: amount.toString(),
-        proof: proof.proof,
-        publicInputs: proof.publicInputs,
-      },
-    );
+    const response = await this.api.post<ApiResponse<{ signature: string }>>("/withdrawals", {
+      nullifier: bytesToHex(new Uint8Array(32)), // TODO: Calculate real nullifier
+      recipient: recipientAddress,
+      amount: amount.toString(),
+      proof: proof.proof,
+      publicInputs: proof.publicInputs,
+    });
 
     if (!response.data.success) {
       throw new Error(response.data.error || "Withdrawal failed");
@@ -290,9 +274,9 @@ export class NoirWireClient {
     merkleRoot: string;
   }> {
     const response =
-      await this.api.get<
-        ApiResponse<{ totalDeposits: string; merkleRoot: string }>
-      >("/health/pool");
+      await this.api.get<ApiResponse<{ totalDeposits: string; merkleRoot: string }>>(
+        "/health/pool",
+      );
 
     if (!response.data.success) {
       throw new Error(response.data.error || "Failed to get pool status");
@@ -304,12 +288,10 @@ export class NoirWireClient {
   /**
    * Get Merkle proof for a commitment
    */
-  async getMerkleProof(
-    commitment: string,
-  ): Promise<{ siblings: string[]; pathIndices: number[] }> {
-    const response = await this.api.get<
-      ApiResponse<{ siblings: string[]; pathIndices: number[] }>
-    >(`/merkle/proof/${commitment}`);
+  async getMerkleProof(commitment: string): Promise<{ siblings: string[]; pathIndices: number[] }> {
+    const response = await this.api.get<ApiResponse<{ siblings: string[]; pathIndices: number[] }>>(
+      `/merkle/proof/${commitment}`,
+    );
 
     if (!response.data.success) {
       throw new Error(response.data.error || "Failed to get Merkle proof");

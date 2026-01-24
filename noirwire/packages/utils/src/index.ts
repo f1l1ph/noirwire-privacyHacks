@@ -53,10 +53,7 @@ export function isValidBase58(str: string): boolean {
 /**
  * Validate amount is positive and within bounds
  */
-export function isValidAmount(
-  amount: bigint | number,
-  maxAmount?: bigint,
-): boolean {
+export function isValidAmount(amount: bigint | number, maxAmount?: bigint): boolean {
   const bigAmount = typeof amount === "number" ? BigInt(amount) : amount;
   if (bigAmount <= 0n) return false;
   if (maxAmount && bigAmount > maxAmount) return false;
@@ -118,11 +115,7 @@ export function sleep(ms: number): Promise<void> {
 /**
  * Retry a function with exponential backoff
  */
-export async function retry<T>(
-  fn: () => Promise<T>,
-  maxRetries = 3,
-  baseDelay = 1000,
-): Promise<T> {
+export async function retry<T>(fn: () => Promise<T>, maxRetries = 3, baseDelay = 1000): Promise<T> {
   let lastError: Error | undefined;
 
   for (let i = 0; i < maxRetries; i++) {

@@ -2,11 +2,7 @@ import { Injectable } from "@nestjs/common";
 
 @Injectable()
 export class WithdrawalsService {
-  async processWithdrawal(
-    _proof: string,
-    _publicInputs: string[],
-    _recipient: string,
-  ) {
+  async processWithdrawal(_proof: string, _publicInputs: string[], _recipient: string) {
     // TODO: Verify ZK proof
     // TODO: Execute withdrawal on-chain
     // TODO: Store in database

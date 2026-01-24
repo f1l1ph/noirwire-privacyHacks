@@ -22,9 +22,7 @@ export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey);
 // Commitment Queries
 // ============================================
 
-export async function getCommitmentsByPool(
-  poolAddress: string,
-): Promise<Commitment[]> {
+export async function getCommitmentsByPool(poolAddress: string): Promise<Commitment[]> {
   const { data, error } = await supabase
     .from("commitments")
     .select("*")
@@ -77,9 +75,7 @@ export async function insertCommitment(
 // Transaction Queries
 // ============================================
 
-export async function getTransactionsByPool(
-  poolAddress: string,
-): Promise<Transaction[]> {
+export async function getTransactionsByPool(poolAddress: string): Promise<Transaction[]> {
   const { data, error } = await supabase
     .from("transactions")
     .select("*")
@@ -161,9 +157,7 @@ export async function getVaultById(vaultId: string): Promise<Vault | null> {
   };
 }
 
-export async function createVault(
-  vault: Omit<Vault, "createdAt">,
-): Promise<Vault> {
+export async function createVault(vault: Omit<Vault, "createdAt">): Promise<Vault> {
   const { data, error } = await supabase
     .from("vaults")
     .insert({

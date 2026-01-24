@@ -7,8 +7,7 @@ export class SolanaListenerService {
   private connection: Connection;
 
   constructor() {
-    const rpcUrl =
-      process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
+    const rpcUrl = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
     this.connection = new Connection(rpcUrl, "confirmed");
   }
 

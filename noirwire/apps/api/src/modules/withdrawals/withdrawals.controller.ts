@@ -6,14 +6,8 @@ export class WithdrawalsController {
   constructor(private readonly withdrawalsService: WithdrawalsService) {}
 
   @Post()
-  async create(
-    @Body() body: { proof: string; publicInputs: string[]; recipient: string },
-  ) {
-    return this.withdrawalsService.processWithdrawal(
-      body.proof,
-      body.publicInputs,
-      body.recipient,
-    );
+  async create(@Body() body: { proof: string; publicInputs: string[]; recipient: string }) {
+    return this.withdrawalsService.processWithdrawal(body.proof, body.publicInputs, body.recipient);
   }
 
   @Get()

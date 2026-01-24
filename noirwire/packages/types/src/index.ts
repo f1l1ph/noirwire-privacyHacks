@@ -111,11 +111,7 @@ export interface WithdrawProofInputs {
 // Transaction Types
 // ============================================
 
-export type TransactionType =
-  | "deposit"
-  | "transfer"
-  | "withdraw"
-  | "batch_settle";
+export type TransactionType = "deposit" | "transfer" | "withdraw" | "batch_settle";
 export type TransactionStatus = "pending" | "confirmed" | "failed";
 
 export interface Transaction {
