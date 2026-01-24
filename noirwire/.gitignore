@@ -27,6 +27,19 @@ out/
 build
 dist
 
+# Solana/Anchor
+target/
+.anchor/
+*.so
+test-ledger/
+.deploy/
+*.log
+
+# Noir
+circuits/target/
+proofs/
+*.proof
+*.vk
 
 # Debug
 npm-debug.log*
@@ -36,3 +49,13 @@ yarn-error.log*
 # Misc
 .DS_Store
 *.pem
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
