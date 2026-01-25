@@ -1,5 +1,8 @@
 use crate::primitives::poseidon2::Poseidon2;
 
+// TREE_DEPTH = 3 for testing (supports 8 leaves)
+// PRODUCTION: Change to TREE_DEPTH = 24 (supports 16,777,216 leaves)
+// This is set to 3 for efficient test execution
 pub global TREE_DEPTH: u32 = 3;
 
 pub struct MerkleProof<let N: u32> {

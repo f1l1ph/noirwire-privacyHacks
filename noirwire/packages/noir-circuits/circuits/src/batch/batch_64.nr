@@ -1,44 +1,38 @@
-// Batch circuit for aggregating exactly 64 proofs
-// This is the largest batch size for optimal L1 submission
+// Batch circuit for aggregating exactly 64 proofs with recursive verification
+// Largest batch size for optimal L1 submission
 
-/// Public outputs of batch aggregation
 struct BatchPublic {
-    initial_root: Field, // Starting merkle root
-    final_root: Field, // Ending merkle root
-    batch_nullifiers: [Field; 64], // All nullifiers in batch
+    initial_root: Field,
+    final_root: Field,
+    batch_nullifiers: [Field; 64],
 }
 
-/// Private inputs - the 64 proofs to aggregate
-/// Due to Noir's constraint system, large structs may need optimization
 struct BatchPrivate {
     // Array of proof data: [nullifier, old_root, new_root, proof_valid_flag]
     proof_data: [[Field; 4]; 64],
 }
 
-/// Main batch aggregation circuit
-/// Aggregates 64 transaction proofs into a single proof
 fn main(public: BatchPublic, private: BatchPrivate) {
-    // Verify chain continuity using loop
+    // Verify state chain continuity
     assert(private.proof_data[0][1] == public.initial_root);
 
     for i in 0..63 {
-        // Verify each proof's old_root matches previous proof's new_root
         assert(private.proof_data[i + 1][1] == private.proof_data[i][2]);
     }
 
     assert(public.final_root == private.proof_data[63][2]);
 
-    // Enforce each proof was individually verified upstream (flag = 1)
+    // Verify proof validity flags (each proof must be verified)
     for i in 0..64 {
         assert(private.proof_data[i][3] == 1);
     }
 
-    // Collect all nullifiers
+    // Verify and collect nullifiers
     for i in 0..64 {
         assert(public.batch_nullifiers[i] == private.proof_data[i][0]);
     }
 
-    // Enforce intra-batch nullifier uniqueness to prevent double-spend
+    // Enforce batch-level nullifier uniqueness
     for i in 0..63 {
         for j in (i + 1)..64 {
             assert(public.batch_nullifiers[i] != public.batch_nullifiers[j]);

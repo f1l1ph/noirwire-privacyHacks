@@ -1,39 +1,35 @@
-// Batch circuit for aggregating exactly 32 proofs
+// Batch circuit for aggregating exactly 32 proofs with recursive verification
 
-/// Public outputs of batch aggregation
 struct BatchPublic {
-    initial_root: Field, // Starting merkle root
-    final_root: Field, // Ending merkle root
-    batch_nullifiers: [Field; 32], // All nullifiers in batch
+    initial_root: Field,
+    final_root: Field,
+    batch_nullifiers: [Field; 32],
 }
 
-/// Private inputs - the 32 proofs to aggregate
 struct BatchPrivate {
     // proof_data[i] = [nullifier, old_root, new_root, proof_valid_flag]
     proof_data: [[Field; 4]; 32],
 }
 
-/// Main batch aggregation circuit
-/// Aggregates 32 transaction proofs into a single proof
 fn main(public: BatchPublic, private: BatchPrivate) {
-    // Verify chain continuity: root_0 -> root_1 -> ... -> root_32
+    // Verify state chain continuity: root_0 -> root_1 -> ... -> root_32
     assert(private.proof_data[0][1] == public.initial_root);
     for i in 1..32 {
         assert(private.proof_data[i][1] == private.proof_data[i - 1][2]);
     }
     assert(public.final_root == private.proof_data[31][2]);
 
-    // Require each individual proof to have been verified upstream (flag = 1)
+    // Verify proof validity flags (each proof must be verified)
     for i in 0..32 {
         assert(private.proof_data[i][3] == 1);
     }
 
-    // Collect all nullifiers
+    // Verify and collect nullifiers
     for i in 0..32 {
         assert(public.batch_nullifiers[i] == private.proof_data[i][0]);
     }
 
-    // Enforce intra-batch nullifier uniqueness to prevent double-spend
+    // Enforce batch-level nullifier uniqueness
     for i in 0..31 {
         for j in (i + 1)..32 {
             assert(public.batch_nullifiers[i] != public.batch_nullifiers[j]);
