@@ -117,6 +117,23 @@ pub fn handler(
     nullifier_entry.slot = Clock::get()?.slot;
     nullifier_entry.bump = ctx.bumps.nullifier_entry;
 
+    // 5.5. SECURITY (CRITICAL-07): Verify pool has sufficient balance before transfer
+    require!(
+        pool.total_shielded >= amount,
+        PoolError::InsufficientPoolBalance
+    );
+
+    require!(
+        ctx.accounts.pool_vault.amount >= amount,
+        PoolError::InsufficientVaultBalance
+    );
+
+    msg!(
+        "Balance check passed: pool={}, vault={}",
+        pool.total_shielded,
+        ctx.accounts.pool_vault.amount
+    );
+
     // 6. Transfer tokens from pool to recipient
     let pool_key = pool.key();
     let authority_seeds = &[b"authority", pool_key.as_ref(), &[ctx.bumps.pool_authority]];
@@ -140,8 +157,16 @@ pub fn handler(
         .total_shielded
         .checked_sub(amount)
         .ok_or(PoolError::Underflow)?;
-    pool.total_withdrawals += 1;
-    pool.total_nullifiers += 1;
+
+    // SECURITY (MEDIUM-03): Use checked arithmetic for statistics
+    pool.total_withdrawals = pool
+        .total_withdrawals
+        .checked_add(1)
+        .ok_or(PoolError::Overflow)?;
+    pool.total_nullifiers = pool
+        .total_nullifiers
+        .checked_add(1)
+        .ok_or(PoolError::Overflow)?;
 
     // 8. Emit event
     emit!(WithdrawEvent {

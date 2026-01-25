@@ -18,6 +18,8 @@ idl-build = ["anchor-lang/idl-build"]
 
 [dependencies]
 anchor-lang = "0.31.1"
+# MagicBlock Ephemeral Rollups SDK for Permission Program CPI
+ephemeral-rollups-sdk = { version = "0.8", features = ["access-control"] }
 
 [dev-dependencies]
 solana-program-test = "2.0"

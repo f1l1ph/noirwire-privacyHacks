@@ -88,6 +88,9 @@ pub fn handler(ctx: Context<Deposit>, amount: u64, proof_data: DepositProofData)
     msg!("ZK proof verified successfully");
 
     // 5. Transfer tokens from user to pool vault
+    // SECURITY (CRITICAL-06): Verify actual transfer amount matches declared amount
+    let vault_balance_before = ctx.accounts.pool_vault.amount;
+
     let transfer_ctx = CpiContext::new(
         ctx.accounts.token_program.to_account_info(),
         Transfer {
@@ -98,14 +101,33 @@ pub fn handler(ctx: Context<Deposit>, amount: u64, proof_data: DepositProofData)
     );
     token::transfer(transfer_ctx, amount)?;
 
+    // Reload vault account to get updated balance
+    ctx.accounts.pool_vault.reload()?;
+    let vault_balance_after = ctx.accounts.pool_vault.amount;
+
+    // Verify actual transferred amount matches requested amount
+    let actual_transferred = vault_balance_after
+        .checked_sub(vault_balance_before)
+        .ok_or(PoolError::Underflow)?;
+
+    require!(
+        actual_transferred == amount,
+        PoolError::InvalidTransferAmount
+    );
+
+    msg!("Transfer verified: {} tokens", actual_transferred);
+
     // 6. Update pool state with new merkle root from proof
     let new_root = proof_data.new_root;
     pool.update_root(new_root);
     pool.total_shielded = pool
         .total_shielded
-        .checked_add(amount)
+        .checked_add(actual_transferred)
         .ok_or(PoolError::Overflow)?;
-    pool.total_deposits += 1;
+    pool.total_deposits = pool
+        .total_deposits
+        .checked_add(1)
+        .ok_or(PoolError::Overflow)?;
 
     // 7. Emit event
     emit!(DepositEvent {

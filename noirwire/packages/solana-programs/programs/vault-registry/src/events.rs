@@ -23,3 +23,10 @@ pub struct MemberRemovedEvent {
     pub member: Pubkey,
     pub timestamp: i64,
 }
+
+#[event]
+pub struct VaultClosedEvent {
+    pub vault_id: [u8; 32],
+    pub admin: Pubkey,
+    pub timestamp: i64,
+}

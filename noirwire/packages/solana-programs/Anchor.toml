@@ -5,29 +5,25 @@ anchor_version = "0.31.1"
 resolution = true
 skip-lint = false
 
-[programs.localnet]
-shielded_pool = "GHaaCGvizKd7QVCw93vHHc3bDQ1JNdufT4ZX9RbeR6Pj"
-zk_verifier = "E2iDwQ5pjSk4qxmXj7U1NUsqPyFGyfeVYj1CBXqL6fBw"
-vault_registry = "FXVuM3iLQgejHHoTw6Gqh77MEGcniR6VK8sHTwPSRSvG"
-
 [programs.devnet]
 shielded_pool = "GHaaCGvizKd7QVCw93vHHc3bDQ1JNdufT4ZX9RbeR6Pj"
-zk_verifier = "E2iDwQ5pjSk4qxmXj7U1NUsqPyFGyfeVYj1CBXqL6fBw"
 vault_registry = "FXVuM3iLQgejHHoTw6Gqh77MEGcniR6VK8sHTwPSRSvG"
+zk_verifier = "E2iDwQ5pjSk4qxmXj7U1NUsqPyFGyfeVYj1CBXqL6fBw"
+
+[programs.localnet]
+shielded_pool = "4482RjJ8aDEYjuUbd7af35K918tGZHZb3xeMqxF8SMx1"
+vault_registry = "FWaonsWs2LpGTWBEPntPBvPSeKxjcXNeRBRcsuKT9x18"
+zk_verifier = "DTBnMWLQw3rp3MhL7mf3BNk68Qhq2Kr4zcJJpNVVAXQD"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "Localnet"
+cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
-[scripts]
-test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
-
 [workspace]
-members = [
-    "programs/shielded-pool",
-    "programs/zk-verifier",
-    "programs/vault-registry",
-]
+members = ["programs/shielded-pool", "programs/zk-verifier", "programs/vault-registry"]
+
+[scripts]
+test = "yarn run ts-mocha -p ./tsconfig.json -t 60000 tests/**/*.ts"

@@ -5,6 +5,53 @@
 
 ---
 
+## ⚠️ Testing Requirements
+
+> **MOCK FOR PERMISSION PROGRAM REQUIRED FOR LOCAL TESTING**
+>
+> The vault-registry program makes CPI calls to the MagicBlock Permission Program
+> (`ACLseoPoyC3cBqoUtkbjZ4aDrkurZW86v19pXz2XQnp1`), which only exists on **devnet/mainnet**.
+>
+> Local tests that involve CPI to the Permission Program will fail on localnet.
+
+### TODO: How to Test on Devnet
+
+1. **Configure Anchor.toml** to use devnet:
+
+   ```toml
+   [provider]
+   cluster = "devnet"
+   wallet = "~/.config/solana/id.json"
+   ```
+
+2. **Ensure your wallet has devnet SOL:**
+
+   ```bash
+   solana airdrop 2 --url devnet
+   ```
+
+3. **Deploy programs to devnet:**
+
+   ```bash
+   anchor deploy --provider.cluster devnet
+   ```
+
+4. **Run tests with devnet:**
+
+   ```bash
+   ANCHOR_PROVIDER_URL=https://api.devnet.solana.com anchor test --skip-local-validator
+   ```
+
+   Or using anchor config:
+
+   ```bash
+   anchor test --provider.cluster devnet --skip-local-validator
+   ```
+
+5. **Enable devnet tests** by removing `.skip` from `describe.skip("[DEVNET ONLY]...")` in test files.
+
+---
+
 ## Table of Contents
 
 1. [Overview](#1-overview)
@@ -149,6 +196,7 @@ pub struct Vault {
 **PDA Seeds:** `["vault", vault_id]`
 
 **Design rationale:**
+
 - No `members_root` — membership managed by PER Permission Program
 - No `member_count` — stored in permission group
 - No `threshold` — multi-sig logic handled by PER
@@ -175,9 +223,9 @@ pub struct Balance {
 
 **Privacy model:**
 
-| vault_id | Visibility |
-|----------|-----------|
-| `None` | Only `owner` can see (solo user) |
+| vault_id         | Visibility                        |
+| ---------------- | --------------------------------- |
+| `None`           | Only `owner` can see (solo user)  |
 | `Some(vault_id)` | All members of `vault_id` can see |
 
 **Examples:**
@@ -220,14 +268,14 @@ pub enum VaultRole {
 
 **Permission matrix:**
 
-| Action | Viewer | Member | Admin |
-|--------|--------|--------|-------|
-| View vault balances | ✅ | ✅ | ✅ |
-| Deposit to vault | ❌ | ✅ | ✅ |
-| Transfer (within vault) | ❌ | ✅ | ✅ |
-| Withdraw own funds | ❌ | ✅ | ✅ |
-| Add members | ❌ | ❌ | ✅ |
-| Remove members | ❌ | ❌ | ✅ |
+| Action                  | Viewer | Member | Admin |
+| ----------------------- | ------ | ------ | ----- |
+| View vault balances     | ✅     | ✅     | ✅    |
+| Deposit to vault        | ❌     | ✅     | ✅    |
+| Transfer (within vault) | ❌     | ✅     | ✅    |
+| Withdraw own funds      | ❌     | ✅     | ✅    |
+| Add members             | ❌     | ❌     | ✅    |
+| Remove members          | ❌     | ❌     | ✅    |
 
 ### Permission Flow
 
@@ -263,12 +311,14 @@ pub fn create_vault(
 ```
 
 **Accounts:**
+
 - `vault` (init, PDA: `["vault", vault_id]`)
 - `admin` (signer, payer)
 - `per_permission_program` (PER Permission Program)
 - `system_program`
 
 **Flow:**
+
 1. Validate name length ≤ 32 chars
 2. Create Vault PDA
 3. CPI to PER Permission Program → create permission group
@@ -293,11 +343,13 @@ pub fn add_vault_member(
 ```
 
 **Accounts:**
+
 - `vault` (constraint: `has_one = admin`)
 - `admin` (signer)
 - `per_permission_program`
 
 **Flow:**
+
 1. Verify caller is vault admin
 2. CPI to PER Permission Program → add member to group
 3. Emit `MemberAddedEvent`
@@ -319,11 +371,13 @@ pub fn remove_vault_member(
 ```
 
 **Accounts:**
+
 - `vault` (constraint: `has_one = admin`)
 - `admin` (signer)
 - `per_permission_program`
 
 **Flow:**
+
 1. Verify caller is vault admin
 2. CPI to PER Permission Program → remove member from group
 3. Emit `MemberRemovedEvent`
@@ -345,12 +399,14 @@ pub fn deposit_to_vault(
 ```
 
 **Accounts:**
+
 - `vault`
 - `user` (signer)
 - `per_permission_program`
 - `pool_program` (for CPI)
 
 **Flow:**
+
 1. Check user has at least Member role via CPI
 2. CPI to pool program → create Balance with `vault_id` tag
 3. Emit `DepositToVaultEvent`
@@ -398,6 +454,7 @@ Vault {
 4. Bob can now access vault
 
 **Bob's permissions:**
+
 - ✅ View all vault balances
 - ✅ Deposit to vault
 - ✅ Transfer within vault
@@ -447,6 +504,7 @@ Balance {
    - Carol's balance: 50 → 150 SOL (solo)
 
 **Privacy:**
+
 - ✅ DAO members see: "Bob sent 100 SOL to external address"
 - ✅ Carol sees: "Received 100 SOL"
 - ❌ Carol does NOT know it came from a vault
@@ -470,6 +528,7 @@ Balance {
    - Dave's balance: 200 → 250 SOL (Company vault)
 
 **Privacy:**
+
 - ✅ DAO members see: "Bob sent 50 SOL to external address"
 - ✅ Company members see: "Dave received 50 SOL"
 - ❌ DAO members do NOT see Company vault details
@@ -501,14 +560,14 @@ Layer 3: ZK Proofs (Noir)
 
 ### Threat Model
 
-| Threat | Solo User | Vault User | Mitigation |
-|--------|-----------|-----------|------------|
-| **Balance leak** | Only if PER compromised | Vault members see (by design) | TEE + ZK fallback |
-| **Unauthorized transfer** | Impossible (only owner) | Only permitted roles | Permission Program |
-| **Double spend** | Nullifier prevents | Nullifier prevents | ZK proof |
-| **Front-running** | Impossible (private) | Impossible | No public mempool |
-| **Admin abuse** | N/A | Admin can add/remove | Choose admin carefully |
-| **PER operator attack** | TEE prevents | TEE prevents | Hardware attestation |
+| Threat                    | Solo User               | Vault User                    | Mitigation             |
+| ------------------------- | ----------------------- | ----------------------------- | ---------------------- |
+| **Balance leak**          | Only if PER compromised | Vault members see (by design) | TEE + ZK fallback      |
+| **Unauthorized transfer** | Impossible (only owner) | Only permitted roles          | Permission Program     |
+| **Double spend**          | Nullifier prevents      | Nullifier prevents            | ZK proof               |
+| **Front-running**         | Impossible (private)    | Impossible                    | No public mempool      |
+| **Admin abuse**           | N/A                     | Admin can add/remove          | Choose admin carefully |
+| **PER operator attack**   | TEE prevents            | TEE prevents                  | Hardware attestation   |
 
 ### Security Properties
 
@@ -557,6 +616,7 @@ Layer 3: ZK Proofs (Noir)
 **Solution:** Single Balance structure with optional `vault_id` field.
 
 **Advantages:**
+
 - Unified solo/vault model
 - Easy cross-type transfers
 - Simple PER state management
@@ -613,6 +673,7 @@ Balance {
 ```
 
 **Advantages:**
+
 - Single code path for balance management
 - Easy mental model
 - Smooth transition from solo → vault member
@@ -708,9 +769,9 @@ pub struct DepositToVaultEvent {
 
 ## Account Size Summary
 
-| Account | Size | Rent (lamports) | Refundable? |
-|---------|------|-----------------|-------------|
-| Vault | ~250 bytes | ~20,000 | Yes (admin) |
+| Account | Size       | Rent (lamports) | Refundable? |
+| ------- | ---------- | --------------- | ----------- |
+| Vault   | ~250 bytes | ~20,000         | Yes (admin) |
 
 **Note:** Balance accounts stored in PER (not on-chain), zero rent cost.
 
@@ -719,15 +780,18 @@ pub struct DepositToVaultEvent {
 ## References
 
 ### Related Blueprints
+
 - **01_Zk_Noir_Circuits.md** — ZK circuits for private transfers
 - **10_Solana_Programs.md** — Shielded pool program integration
 - **03_Vault_Circuits.md** — Simplified vault circuits (no membership proofs)
 
 ### PER Documentation
+
 - [MagicBlock PER Authorization](https://docs.magicblock.gg/pages/private-ephemeral-rollups-pers/introduction/authorization)
 - [Permission Program Guide](https://docs.magicblock.gg/pages/private-ephemeral-rollups-pers/how-to-guide/permissions)
 
 ### Implementation Files
+
 - `programs/vault/src/lib.rs` — Vault program
 - `programs/shielded-pool/src/lib.rs` — Pool program with vault integration
 

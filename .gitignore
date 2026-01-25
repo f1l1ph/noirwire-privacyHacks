@@ -1,0 +1,84 @@
+# Repository root .gitignore
+# See https://help.github.com/articles/ignoring-files/
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Local env files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Testing
+coverage/
+
+# Turbo
+.turbo/
+
+# Vercel
+.vercel/
+
+# Build Outputs
+.next/
+out/
+build/
+dist/
+
+# ===================
+# Solana/Anchor
+# ===================
+target/
+.anchor/
+*.so
+test-ledger/
+.deploy/
+*.log
+
+# Anchor build artifacts
+programs/**/target/
+Cargo.lock.bak
+
+# ===================
+# Noir Circuits
+# ===================
+circuits/target/
+proofs/
+*.proof
+*.vk
+
+# ===================
+# Debug & Logs
+# ===================
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+build.log
+
+# ===================
+# IDE & Editor
+# ===================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# ===================
+# OS Files
+# ===================
+.DS_Store
+Thumbs.db
+*.pem
+
+# ===================
+# Misc
+# ===================
+*.local
+.cache/

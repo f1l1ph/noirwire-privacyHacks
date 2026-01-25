@@ -34,4 +34,13 @@ pub enum PoolError {
 
     #[msg("Invalid verification key")]
     InvalidVerificationKey,
+
+    #[msg("Transfer amount doesn't match declared amount")]
+    InvalidTransferAmount,
+
+    #[msg("Insufficient pool balance for withdrawal")]
+    InsufficientPoolBalance,
+
+    #[msg("Insufficient vault balance for withdrawal")]
+    InsufficientVaultBalance,
 }

@@ -13,4 +13,13 @@ pub enum VaultError {
 
     #[msg("Vault does not exist")]
     VaultNotFound,
+
+    #[msg("Invalid Permission Program")]
+    InvalidPermissionProgram,
+
+    #[msg("Permission account mismatch")]
+    PermissionMismatch,
+
+    #[msg("Permission CPI failed")]
+    PermissionCpiFailed,
 }

@@ -173,29 +173,42 @@ pub fn u32_to_field(value: u32) -> [u8; 32] {
 /// Helper function to convert field [u8; 32] back to u64
 /// Assumes the field was created with u64_to_field
 /// Validates that the value is within BN254 field bounds
+///
+/// SECURITY (HIGH-07): Enhanced validation to prevent encoding attacks
 pub fn field_to_u64(field: &[u8; 32]) -> Result<u64> {
     use anchor_lang::prelude::*;
     use num_bigint::BigUint;
     use num_traits::Num;
 
-    // Check that leading bytes are zero
+    // Check that leading 24 bytes are zero (u64 uses only last 8 bytes)
     if field[..24].iter().any(|&b| b != 0) {
         return err!(crate::errors::PoolError::InvalidProof);
     }
 
+    // Parse last 8 bytes as u64
+    let mut bytes = [0u8; 8];
+    bytes.copy_from_slice(&field[24..32]);
+    let value = u64::from_be_bytes(bytes);
+
+    // SECURITY: Verify round-trip encoding to prevent malicious field encoding
+    // This ensures the field representation exactly matches the u64 value
+    let expected_field = u64_to_field(value);
+    require!(
+        field == &expected_field,
+        crate::errors::PoolError::InvalidProof
+    );
+
+    // Additional validation: Verify within BN254 field bounds
     // BN254 field modulus: p = 21888242871839275222246405745257275088696311157297823662689037894645226208583
-    // In hex: 30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47
+    // Since u64::MAX < p, this check is redundant but kept for defense in depth
     let p = BigUint::from_str_radix(
         "30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47",
         16,
     )
     .map_err(|_| error!(crate::errors::PoolError::InvalidProof))?;
 
-    // Verify the value is within BN254 field
-    let value = BigUint::from_bytes_be(field);
-    require!(value < p, crate::errors::PoolError::InvalidProof);
+    let field_value = BigUint::from_bytes_be(field);
+    require!(field_value < p, crate::errors::PoolError::InvalidProof);
 
-    let mut bytes = [0u8; 8];
-    bytes.copy_from_slice(&field[24..32]);
-    Ok(u64::from_be_bytes(bytes))
+    Ok(value)
 }

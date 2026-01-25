@@ -35,3 +35,12 @@ pub struct EmergencyPauseEvent {
     pub paused: bool,
     pub timestamp: i64,
 }
+
+#[event]
+pub struct NullifierRecordedEvent {
+    pub pool: Pubkey,
+    pub nullifier: [u8; 32],
+    pub nullifiers_root: [u8; 32],
+    pub slot: u64,
+    pub timestamp: i64,
+}

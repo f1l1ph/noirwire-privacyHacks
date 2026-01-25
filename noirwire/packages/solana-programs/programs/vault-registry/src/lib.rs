@@ -1,6 +1,13 @@
 use anchor_lang::prelude::*;
 
-declare_id!("FXVuM3iLQgejHHoTw6Gqh77MEGcniR6VK8sHTwPSRSvG");
+// MagicBlock SDK imports for Permission Program CPI
+use ephemeral_rollups_sdk::access_control::instructions::{
+    CreatePermissionCpiBuilder, UpdatePermissionCpiBuilder,
+};
+use ephemeral_rollups_sdk::access_control::structs::{Member, MembersArgs};
+use ephemeral_rollups_sdk::consts::PERMISSION_PROGRAM_ID;
+
+declare_id!("FWaonsWs2LpGTWBEPntPBvPSeKxjcXNeRBRcsuKT9x18");
 
 pub mod errors;
 pub mod events;
@@ -14,8 +21,12 @@ use state::*;
 pub mod vault_registry {
     use super::*;
 
-    /// Create a new vault
-    /// Calls PER Permission Program to create permission group
+    /// Create a new vault with PER Permission integration
+    ///
+    /// This instruction:
+    /// 1. Creates a Vault PDA to store vault metadata
+    /// 2. Calls PER Permission Program via CPI to create a permission account
+    /// 3. The admin becomes the authority member with full access
     pub fn create_vault(ctx: Context<CreateVault>, vault_id: [u8; 32], name: String) -> Result<()> {
         require!(name.len() <= 32, VaultError::NameTooLong);
 
@@ -26,9 +37,28 @@ pub mod vault_registry {
         vault.created_at = Clock::get()?.unix_timestamp;
         vault.bump = ctx.bumps.vault;
 
-        // TODO: CPI to PER Permission Program to create group
-        // For now, use a placeholder permission group
-        vault.permission_group = vault_id; // Placeholder
+        // Store the permission PDA
+        vault.permission = ctx.accounts.permission.key();
+
+        // Create members array with admin as authority member
+        let members = vec![Member {
+            flags: (permission_flags::AUTHORITY_FLAG | permission_flags::ALL_VIEW_FLAGS) as u8,
+            pubkey: ctx.accounts.admin.key(),
+        }];
+
+        // Build vault PDA seeds for signing
+        let vault_seeds: &[&[u8]] = &[b"vault", vault_id.as_ref(), &[ctx.bumps.vault]];
+
+        // CPI to Permission Program using SDK builder
+        CreatePermissionCpiBuilder::new(&ctx.accounts.per_permission_program.to_account_info())
+            .permissioned_account(&ctx.accounts.vault.to_account_info())
+            .permission(&ctx.accounts.permission)
+            .payer(&ctx.accounts.admin)
+            .system_program(&ctx.accounts.system_program)
+            .args(MembersArgs {
+                members: Some(members),
+            })
+            .invoke_signed(&[vault_seeds])?;
 
         emit!(VaultCreatedEvent {
             vault_id,
@@ -37,12 +67,17 @@ pub mod vault_registry {
             timestamp: Clock::get()?.unix_timestamp,
         });
 
-        msg!("Vault created: {:?}", vault_id);
+        msg!(
+            "Vault created with permission: {:?}",
+            ctx.accounts.permission.key()
+        );
         Ok(())
     }
 
     /// Add a member to the vault
-    /// Calls PER Permission Program to add to group
+    ///
+    /// Calls PER Permission Program to update the permission account
+    /// with the new member and their role-based flags
     pub fn add_vault_member(
         ctx: Context<ManageVault>,
         _vault_id: [u8; 32],
@@ -50,9 +85,24 @@ pub mod vault_registry {
         role: VaultRole,
     ) -> Result<()> {
         let vault = &ctx.accounts.vault;
+        let flags = role.to_flags();
 
-        // TODO: CPI to PER Permission Program to add member
-        // invoke_per_add_member(...)?;
+        // Create members array with the new member
+        let members = vec![Member {
+            flags: flags as u8,
+            pubkey: member,
+        }];
+
+        // CPI to Permission Program using SDK builder
+        // Admin has authority to update permissions
+        UpdatePermissionCpiBuilder::new(&ctx.accounts.per_permission_program.to_account_info())
+            .permissioned_account(&ctx.accounts.vault.to_account_info(), false)
+            .authority(&ctx.accounts.admin.to_account_info(), true)
+            .permission(&ctx.accounts.permission)
+            .args(MembersArgs {
+                members: Some(members),
+            })
+            .invoke()?;
 
         emit!(MemberAddedEvent {
             vault_id: vault.vault_id,
@@ -66,7 +116,9 @@ pub mod vault_registry {
     }
 
     /// Remove a member from the vault
-    /// Calls PER Permission Program to remove from group
+    ///
+    /// Calls PER Permission Program to update the permission account
+    /// removing the member (by setting their flags to 0)
     pub fn remove_vault_member(
         ctx: Context<ManageVault>,
         _vault_id: [u8; 32],
@@ -74,8 +126,21 @@ pub mod vault_registry {
     ) -> Result<()> {
         let vault = &ctx.accounts.vault;
 
-        // TODO: CPI to PER Permission Program to remove member
-        // invoke_per_remove_member(...)?;
+        // To remove a member, set their flags to 0
+        let members = vec![Member {
+            flags: 0u8,
+            pubkey: member,
+        }];
+
+        // CPI to Permission Program using SDK builder
+        UpdatePermissionCpiBuilder::new(&ctx.accounts.per_permission_program.to_account_info())
+            .permissioned_account(&ctx.accounts.vault.to_account_info(), false)
+            .authority(&ctx.accounts.admin.to_account_info(), true)
+            .permission(&ctx.accounts.permission)
+            .args(MembersArgs {
+                members: Some(members),
+            })
+            .invoke()?;
 
         emit!(MemberRemovedEvent {
             vault_id: vault.vault_id,
@@ -84,6 +149,31 @@ pub mod vault_registry {
         });
 
         msg!("Removed member {} from vault", member);
+        Ok(())
+    }
+
+    /// Close the vault and its permission account
+    ///
+    /// Note: Currently, the Permission Program may not have a close instruction exposed via SDK.
+    /// We clear the permission by setting members to None (empty permission).
+    /// The vault PDA close is handled by Anchor's `close` constraint.
+    pub fn close_vault(ctx: Context<CloseVault>, vault_id: [u8; 32]) -> Result<()> {
+        // Clear permission members before closing vault
+        // This effectively "closes" the permission by removing all access
+        UpdatePermissionCpiBuilder::new(&ctx.accounts.per_permission_program.to_account_info())
+            .permissioned_account(&ctx.accounts.vault.to_account_info(), false)
+            .authority(&ctx.accounts.admin.to_account_info(), true)
+            .permission(&ctx.accounts.permission)
+            .args(MembersArgs { members: None })
+            .invoke()?;
+
+        emit!(VaultClosedEvent {
+            vault_id,
+            admin: ctx.accounts.admin.key(),
+            timestamp: Clock::get()?.unix_timestamp,
+        });
+
+        msg!("Vault closed: {:?}", vault_id);
         Ok(())
     }
 }
@@ -103,7 +193,21 @@ pub struct CreateVault<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
 
-    /// CHECK: PER Permission Program (will be used for CPI)
+    /// Permission account PDA (derived from vault by Permission Program)
+    /// CHECK: This is initialized by the Permission Program CPI
+    #[account(
+        mut,
+        seeds = [b"permission", vault.key().as_ref()],
+        seeds::program = PERMISSION_PROGRAM_ID,
+        bump
+    )]
+    pub permission: AccountInfo<'info>,
+
+    /// MagicBlock Permission Program
+    /// CHECK: Verified by constraint
+    #[account(
+        constraint = per_permission_program.key() == PERMISSION_PROGRAM_ID @ VaultError::InvalidPermissionProgram
+    )]
     pub per_permission_program: AccountInfo<'info>,
 
     pub system_program: Program<'info, System>,
@@ -121,6 +225,49 @@ pub struct ManageVault<'info> {
 
     pub admin: Signer<'info>,
 
-    /// CHECK: PER Permission Program (will be used for CPI)
+    /// Permission account (must match vault.permission)
+    /// CHECK: Validated against vault.permission
+    #[account(
+        mut,
+        constraint = permission.key() == vault.permission @ VaultError::PermissionMismatch
+    )]
+    pub permission: AccountInfo<'info>,
+
+    /// MagicBlock Permission Program
+    /// CHECK: Verified by constraint
+    #[account(
+        constraint = per_permission_program.key() == PERMISSION_PROGRAM_ID @ VaultError::InvalidPermissionProgram
+    )]
+    pub per_permission_program: AccountInfo<'info>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_id: [u8; 32])]
+pub struct CloseVault<'info> {
+    #[account(
+        mut,
+        close = admin,
+        has_one = admin,
+        seeds = [b"vault", vault_id.as_ref()],
+        bump = vault.bump
+    )]
+    pub vault: Account<'info, Vault>,
+
+    #[account(mut)]
+    pub admin: Signer<'info>,
+
+    /// Permission account (must match vault.permission)
+    /// CHECK: Validated against vault.permission
+    #[account(
+        mut,
+        constraint = permission.key() == vault.permission @ VaultError::PermissionMismatch
+    )]
+    pub permission: AccountInfo<'info>,
+
+    /// MagicBlock Permission Program
+    /// CHECK: Verified by constraint
+    #[account(
+        constraint = per_permission_program.key() == PERMISSION_PROGRAM_ID @ VaultError::InvalidPermissionProgram
+    )]
     pub per_permission_program: AccountInfo<'info>,
 }

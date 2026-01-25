@@ -7,7 +7,7 @@ pub struct Initialize<'info> {
     #[account(
         init,
         payer = authority,
-        space = PoolState::SIZE,
+        space = 8 + PoolState::INIT_SPACE,
         seeds = [b"pool", token_mint.key().as_ref()],
         bump
     )]
@@ -44,15 +44,21 @@ pub struct Initialize<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-pub fn handler(ctx: Context<Initialize>, token_mint: Pubkey, vk_hash: [u8; 32]) -> Result<()> {
+pub fn handler(
+    ctx: Context<Initialize>,
+    token_mint: Pubkey,
+    vk_hash: [u8; 32],
+    per_authority: Pubkey,
+) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
 
     pool.authority = ctx.accounts.authority.key();
+    pool.per_authority = per_authority; // CRITICAL-05: PER authority for batch settlement
     pool.token_mint = token_mint;
     pool.token_vault = ctx.accounts.pool_vault.key();
     pool.vk_hash = vk_hash;
     pool.commitment_root = [0u8; 32]; // Empty tree root
-    pool.historical_roots = [[0u8; 32]; HISTORICAL_ROOTS_SIZE];
+    pool.historical_roots = [[0u8; 32]; 32]; // Fixed-size array
     pool.roots_index = 0;
     pool.total_shielded = 0;
     pool.paused = false;
@@ -61,8 +67,10 @@ pub fn handler(ctx: Context<Initialize>, token_mint: Pubkey, vk_hash: [u8; 32]) 
     pool.total_nullifiers = 0;
     pool.last_nullifiers_root = [0u8; 32];
     pool.bump = ctx.bumps.pool;
+    pool._reserved = Vec::new();
 
     msg!("Pool initialized for mint: {}", token_mint);
+    msg!("PER authority: {}", per_authority);
     msg!("Verification key hash: {:?}", vk_hash);
 
     Ok(())
