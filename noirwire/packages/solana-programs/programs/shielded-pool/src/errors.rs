@@ -25,4 +25,13 @@ pub enum PoolError {
 
     #[msg("Nullifier already used")]
     NullifierAlreadyUsed,
+
+    #[msg("Invalid zero-knowledge proof")]
+    InvalidProof,
+
+    #[msg("Recipient doesn't match proof")]
+    InvalidRecipient,
+
+    #[msg("Invalid verification key")]
+    InvalidVerificationKey,
 }

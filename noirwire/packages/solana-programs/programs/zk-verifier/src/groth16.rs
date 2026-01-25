@@ -1,8 +1,13 @@
-use anchor_lang::prelude::*;
-// TODO: alt_bn128 module not available in current solana-program version
-// Need to investigate alternative BN254 curve operations
-// use anchor_lang::solana_program::alt_bn128;
 use crate::errors::VerifierError;
+use anchor_lang::prelude::*;
+
+// NOTE: alt_bn128 module not available in solana-program v2.3.0
+// Will be available in future Solana releases.
+// Temporary workaround: placeholder implementations
+// Production implementation options:
+// 1. Wait for Solana SDK update with alt_bn128 support
+// 2. Use light-protocol or similar library for on-chain verification
+// 3. Off-chain proof verification with on-chain result submission
 
 /// Groth16 proof structure (BN254 curve)
 /// Points are in compressed format
@@ -80,21 +85,80 @@ pub fn verify_proof(
 }
 
 /// Wrapper for alt_bn128 addition syscall
-fn alt_bn128_addition(_p1: &[u8], _p2: &[u8]) -> Result<Vec<u8>> {
-    // TODO: Implement BN254 addition using available syscalls or library
-    // alt_bn128 module not available in current Solana version
+/// Adds two points on the BN254 curve (G1 or G2)
+/// Input format: p1 (64 or 128 bytes) || p2 (64 or 128 bytes)
+/// Output: result point (64 or 128 bytes)
+/// PLACEHOLDER: alt_bn128 addition not available in SDK v2.3.0
+/// Will use syscall when Solana SDK includes alt_bn128 module
+fn alt_bn128_addition(p1: &[u8], p2: &[u8]) -> Result<Vec<u8>> {
+    // Validate point sizes (must be 64 or 128 bytes)
+    require!(
+        (p1.len() == 64 || p1.len() == 128) && (p2.len() == 64 || p2.len() == 128),
+        VerifierError::Bn128Error
+    );
+
+    // Verify both points are the same size (G1 or G2)
+    require!(p1.len() == p2.len(), VerifierError::Bn128Error);
+
+    // TODO: Replace with actual syscall when available:
+    // use solana_program::alt_bn128::{self, AltBn128Operated};
+    // let mut input = Vec::with_capacity(p1.len() + p2.len());
+    // input.extend_from_slice(p1);
+    // input.extend_from_slice(p2);
+    // let mut output = vec![0u8; p1.len()];
+    // let result = alt_bn128::add(&input, &mut output)?;
+    // require!(result == AltBn128Operated::Success, VerifierError::Bn128Error);
+    // Ok(output)
+
     err!(VerifierError::Bn128Error)
 }
 
-/// Wrapper for alt_bn128 multiplication syscall
-fn alt_bn128_multiplication(_point: &[u8], _scalar: &[u8; 32]) -> Result<Vec<u8>> {
-    // TODO: Implement BN254 multiplication using available syscalls or library
+/// Wrapper for alt_bn128 scalar multiplication syscall
+/// Multiplies a point on the BN254 curve by a scalar field element
+/// Input format: point (64 or 128 bytes) || scalar (32 bytes, big-endian)
+/// Output: result point (64 or 128 bytes)
+/// PLACEHOLDER: alt_bn128 multiplication not available in SDK v2.3.0
+/// Will use syscall when Solana SDK includes alt_bn128 module
+fn alt_bn128_multiplication(point: &[u8], scalar: &[u8; 32]) -> Result<Vec<u8>> {
+    // Validate point size (must be 64 or 128 bytes for G1 or G2)
+    require!(
+        point.len() == 64 || point.len() == 128,
+        VerifierError::Bn128Error
+    );
+
+    // TODO: Replace with actual syscall when available:
+    // use solana_program::alt_bn128::{self, AltBn128Operated};
+    // let mut input = Vec::with_capacity(point.len() + 32);
+    // input.extend_from_slice(point);
+    // input.extend_from_slice(scalar);
+    // let mut output = vec![0u8; point.len()];
+    // let result = alt_bn128::multiply(&input, &mut output)?;
+    // require!(result == AltBn128Operated::Success, VerifierError::Bn128Error);
+    // Ok(output)
+
     err!(VerifierError::Bn128Error)
 }
 
 /// Wrapper for alt_bn128 pairing syscall
-fn alt_bn128_pairing(_input: &[u8]) -> Result<Vec<u8>> {
-    // TODO: Implement BN254 pairing using available syscalls or library
+/// Verifies the pairing equation e(p1, p2) * e(p3, p4) * ... == 1
+/// Input format: [p1_g1 (64 bytes) || p1_g2 (128 bytes)] * n
+/// Output: 32 bytes, all zeros except last byte = 1 if pairing check passes
+/// PLACEHOLDER: alt_bn128 pairing not available in SDK v2.3.0
+/// Will use syscall when Solana SDK includes alt_bn128 module
+fn alt_bn128_pairing(input: &[u8]) -> Result<Vec<u8>> {
+    // Validate input size (must be multiples of 192 bytes per pairing: 64 + 128)
+    require!(
+        input.len() % 192 == 0 && input.len() > 0,
+        VerifierError::PairingFailed
+    );
+
+    // TODO: Replace with actual syscall when available:
+    // use solana_program::alt_bn128::{self, AltBn128Operated};
+    // let mut output = vec![0u8; 32];
+    // let result = alt_bn128::pairing(input, &mut output)?;
+    // require!(result == AltBn128Operated::Success, VerifierError::PairingFailed);
+    // Ok(output)
+
     err!(VerifierError::PairingFailed)
 }
 

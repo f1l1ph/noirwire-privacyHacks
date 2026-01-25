@@ -3,9 +3,13 @@ use crate::events::WithdrawEvent;
 use crate::state::*;
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
+use zk_verifier::cpi;
+use zk_verifier::cpi::accounts::VerifyProof;
+use zk_verifier::program::ZkVerifier;
+use zk_verifier::state::VerificationKey;
 
 #[derive(Accounts)]
-#[instruction(amount: u64, nullifier: [u8; 32])]
+#[instruction(proof_data: WithdrawProofData, recipient: Pubkey)]
 pub struct Withdraw<'info> {
     /// Pool state
     #[account(
@@ -36,10 +40,21 @@ pub struct Withdraw<'info> {
         init,
         payer = payer,
         space = NullifierEntry::SIZE,
-        seeds = [b"nullifier", pool.key().as_ref(), &nullifier],
+        seeds = [b"nullifier", pool.key().as_ref(), &proof_data.nullifier],
         bump
     )]
     pub nullifier_entry: Account<'info, NullifierEntry>,
+
+    /// Verification key account (for ZK proof verification)
+    /// SECURITY: Verified to be for this pool and withdraw circuit
+    #[account(
+        constraint = verification_key.pool == pool.key() @ PoolError::InvalidVerificationKey,
+        constraint = verification_key.circuit_id == proof::circuit_ids::WITHDRAW @ PoolError::InvalidVerificationKey
+    )]
+    pub verification_key: Account<'info, VerificationKey>,
+
+    /// ZK Verifier program (for CPI verification)
+    pub verifier_program: Program<'info, ZkVerifier>,
 
     /// Payer for nullifier account creation
     #[account(mut)]
@@ -59,22 +74,50 @@ pub struct Withdraw<'info> {
 
 pub fn handler(
     ctx: Context<Withdraw>,
-    amount: u64,
-    nullifier: [u8; 32],
+    proof_data: WithdrawProofData,
     recipient: Pubkey,
 ) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
+    let nullifier = proof_data.nullifier;
 
-    // TODO: Verify ZK proof (nullifier, merkle proof, balance)
-    // For now, assume proof is valid
+    // SECURITY: Verify recipient matches proof to prevent token diversion
+    // Convert recipient from field bytes to Pubkey
+    let proof_recipient = Pubkey::new_from_array(proof_data.recipient);
+    require!(recipient == proof_recipient, PoolError::InvalidRecipient);
 
-    // Record nullifier (account creation proves uniqueness)
+    // 1. Extract amount from proof (convert from field back to u64)
+    let amount = field_to_u64(&proof_data.amount)?;
+
+    // 2. Validate old_root matches current pool root (must be in historical roots)
+    require!(
+        pool.is_valid_root(&proof_data.old_root),
+        PoolError::InvalidMerkleRoot
+    );
+
+    // 3. Request compute budget for ZK verification (~600k CU)
+    msg!("Verifying withdrawal proof (estimated 600k CU)");
+
+    // 4. Verify ZK proof via CPI to zk-verifier program
+    let verify_cpi_ctx = CpiContext::new(
+        ctx.accounts.verifier_program.to_account_info(),
+        VerifyProof {
+            verification_key: ctx.accounts.verification_key.to_account_info(),
+        },
+    );
+
+    let public_inputs = proof_data.public_inputs();
+    cpi::verify(verify_cpi_ctx, proof_data.proof, public_inputs)?;
+
+    msg!("ZK proof verified successfully");
+
+    // 5. Record nullifier (account creation proves uniqueness)
+    // This MUST be done after proof verification to prevent double-spend
     let nullifier_entry = &mut ctx.accounts.nullifier_entry;
     nullifier_entry.nullifier = nullifier;
     nullifier_entry.slot = Clock::get()?.slot;
     nullifier_entry.bump = ctx.bumps.nullifier_entry;
 
-    // Transfer tokens from pool to recipient
+    // 6. Transfer tokens from pool to recipient
     let pool_key = pool.key();
     let authority_seeds = &[b"authority", pool_key.as_ref(), &[ctx.bumps.pool_authority]];
     let signer_seeds = &[&authority_seeds[..]];
@@ -90,9 +133,8 @@ pub fn handler(
     );
     token::transfer(transfer_ctx, amount)?;
 
-    // Update pool state
-    // TODO: Update merkle root with spent commitment
-    let new_root = nullifier; // Placeholder
+    // 7. Update pool state with new merkle root from proof
+    let new_root = proof_data.new_root;
     pool.update_root(new_root);
     pool.total_shielded = pool
         .total_shielded
@@ -101,7 +143,7 @@ pub fn handler(
     pool.total_withdrawals += 1;
     pool.total_nullifiers += 1;
 
-    // Emit event
+    // 8. Emit event
     emit!(WithdrawEvent {
         pool: pool.key(),
         nullifier,
@@ -111,6 +153,11 @@ pub fn handler(
         timestamp: Clock::get()?.unix_timestamp,
     });
 
-    msg!("Withdrawal successful: {} tokens to {}", amount, recipient);
+    msg!(
+        "Withdrawal successful: {} tokens to {}, new root: {:?}",
+        amount,
+        recipient,
+        new_root
+    );
     Ok(())
 }

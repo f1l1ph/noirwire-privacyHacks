@@ -3934,9 +3934,12 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
+ "num-bigint 0.4.6",
+ "num-traits",
  "solana-program-test",
  "solana-sdk",
  "spl-token 6.0.0",
+ "zk-verifier",
 ]
 
 [[package]]

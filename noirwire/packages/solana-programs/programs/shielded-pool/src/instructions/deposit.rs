@@ -3,9 +3,13 @@ use crate::events::DepositEvent;
 use crate::state::*;
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
+use zk_verifier::cpi;
+use zk_verifier::cpi::accounts::VerifyProof;
+use zk_verifier::program::ZkVerifier;
+use zk_verifier::state::VerificationKey;
 
 #[derive(Accounts)]
-#[instruction(amount: u64, commitment: [u8; 32])]
+#[instruction(amount: u64, proof_data: DepositProofData)]
 pub struct Deposit<'info> {
     /// Pool state account
     #[account(
@@ -31,6 +35,17 @@ pub struct Deposit<'info> {
     )]
     pub pool_vault: Account<'info, TokenAccount>,
 
+    /// Verification key account (for ZK proof verification)
+    /// SECURITY: Verified to be for this pool and deposit circuit
+    #[account(
+        constraint = verification_key.pool == pool.key() @ PoolError::InvalidVerificationKey,
+        constraint = verification_key.circuit_id == proof::circuit_ids::DEPOSIT @ PoolError::InvalidVerificationKey
+    )]
+    pub verification_key: Account<'info, VerificationKey>,
+
+    /// ZK Verifier program (for CPI verification)
+    pub verifier_program: Program<'info, ZkVerifier>,
+
     /// Depositor (signer)
     #[account(mut)]
     pub depositor: Signer<'info>,
@@ -39,13 +54,40 @@ pub struct Deposit<'info> {
     pub token_program: Program<'info, Token>,
 }
 
-pub fn handler(ctx: Context<Deposit>, amount: u64, commitment: [u8; 32]) -> Result<()> {
+pub fn handler(ctx: Context<Deposit>, amount: u64, proof_data: DepositProofData) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
 
-    // TODO: Verify ZK proof that commitment is valid
-    // For now, just accept the commitment
+    // 1. Request compute budget for ZK verification (~600k CU)
+    // This is done implicitly by the syscall, but we can log the estimate
+    msg!("Verifying deposit proof (estimated 600k CU)");
 
-    // Transfer tokens from user to pool vault
+    // 2. Verify amount matches proof
+    let proof_amount = u64_to_field(amount);
+    require!(
+        proof_data.deposit_amount == proof_amount,
+        PoolError::InvalidProof
+    );
+
+    // 3. Verify old_root matches current pool root
+    require!(
+        proof_data.old_root == pool.commitment_root,
+        PoolError::InvalidMerkleRoot
+    );
+
+    // 4. Verify ZK proof via CPI to zk-verifier program
+    let verify_cpi_ctx = CpiContext::new(
+        ctx.accounts.verifier_program.to_account_info(),
+        VerifyProof {
+            verification_key: ctx.accounts.verification_key.to_account_info(),
+        },
+    );
+
+    let public_inputs = proof_data.public_inputs();
+    cpi::verify(verify_cpi_ctx, proof_data.proof, public_inputs)?;
+
+    msg!("ZK proof verified successfully");
+
+    // 5. Transfer tokens from user to pool vault
     let transfer_ctx = CpiContext::new(
         ctx.accounts.token_program.to_account_info(),
         Transfer {
@@ -56,9 +98,8 @@ pub fn handler(ctx: Context<Deposit>, amount: u64, commitment: [u8; 32]) -> Resu
     );
     token::transfer(transfer_ctx, amount)?;
 
-    // Update pool state
-    // TODO: Update merkle tree with commitment
-    let new_root = commitment; // Placeholder - should compute new merkle root
+    // 6. Update pool state with new merkle root from proof
+    let new_root = proof_data.new_root;
     pool.update_root(new_root);
     pool.total_shielded = pool
         .total_shielded
@@ -66,15 +107,19 @@ pub fn handler(ctx: Context<Deposit>, amount: u64, commitment: [u8; 32]) -> Resu
         .ok_or(PoolError::Overflow)?;
     pool.total_deposits += 1;
 
-    // Emit event
+    // 7. Emit event
     emit!(DepositEvent {
         pool: pool.key(),
-        commitment,
+        commitment: proof_data.new_commitment,
         amount,
         new_root,
         timestamp: Clock::get()?.unix_timestamp,
     });
 
-    msg!("Deposit successful: {} tokens", amount);
+    msg!(
+        "Deposit successful: {} tokens, new root: {:?}",
+        amount,
+        new_root
+    );
     Ok(())
 }

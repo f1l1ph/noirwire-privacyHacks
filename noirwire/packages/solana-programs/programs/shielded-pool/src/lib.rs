@@ -23,18 +23,23 @@ pub mod shielded_pool {
     }
 
     /// Deposit tokens into the shielded pool (shield)
-    pub fn deposit(ctx: Context<Deposit>, amount: u64, commitment: [u8; 32]) -> Result<()> {
-        instructions::deposit::handler(ctx, amount, commitment)
+    /// Requires a valid ZK proof that the commitment is correctly formed
+    pub fn deposit(
+        ctx: Context<Deposit>,
+        amount: u64,
+        proof_data: state::DepositProofData,
+    ) -> Result<()> {
+        instructions::deposit::handler(ctx, amount, proof_data)
     }
 
     /// Withdraw tokens from the shielded pool (unshield)
+    /// Requires a valid ZK proof of ownership and sufficient balance
     pub fn withdraw(
         ctx: Context<Withdraw>,
-        amount: u64,
-        nullifier: [u8; 32],
+        proof_data: state::WithdrawProofData,
         recipient: Pubkey,
     ) -> Result<()> {
-        instructions::withdraw::handler(ctx, amount, nullifier, recipient)
+        instructions::withdraw::handler(ctx, proof_data, recipient)
     }
 
     /// Batch settlement from PER (multiple nullifiers + new root)
