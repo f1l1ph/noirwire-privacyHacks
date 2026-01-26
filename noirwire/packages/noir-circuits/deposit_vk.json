@@ -1,0 +1,12 @@
+{
+  "programs": [
+    {
+      "package_name": "deposit",
+      "functions": [{ "name": "main", "opcodes": 355 }],
+      "unconstrained_functions": [
+        { "name": "directive_invert", "opcodes": 9 },
+        { "name": "directive_integer_quotient", "opcodes": 8 }
+      ]
+    }
+  ]
+}

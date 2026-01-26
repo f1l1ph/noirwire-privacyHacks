@@ -1,0 +1,12 @@
+{
+  "programs": [
+    {
+      "package_name": "withdraw",
+      "functions": [{ "name": "main", "opcodes": 756 }],
+      "unconstrained_functions": [
+        { "name": "directive_invert", "opcodes": 9 },
+        { "name": "directive_integer_quotient", "opcodes": 8 }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "programs": [
+    {
+      "package_name": "transfer",
+      "functions": [{ "name": "main", "opcodes": 1091 }],
+      "unconstrained_functions": [
+        { "name": "directive_invert", "opcodes": 9 },
+        { "name": "directive_integer_quotient", "opcodes": 8 }
+      ]
+    }
+  ]
+}

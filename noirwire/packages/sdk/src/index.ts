@@ -11,6 +11,10 @@ import { generateSalt, bytesToHex } from "@noirwire/utils";
 export * from "./crypto";
 export * from "./proof";
 
+// Re-export PER and config modules
+export * from "./per";
+export * from "./config";
+
 // ============================================
 // NoirWire Wallet
 // ============================================

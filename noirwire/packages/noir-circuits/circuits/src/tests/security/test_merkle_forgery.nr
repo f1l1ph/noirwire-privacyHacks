@@ -173,14 +173,17 @@ fn test_empty_leaf_forgery() {
 /// This test documents the type-level protection
 #[test]
 fn test_proof_depth_type_safety() {
-    // TREE_DEPTH is const generic = 3
+    // TREE_DEPTH is const generic = 24
     let leaf = 100;
 
     // Proof must have exactly TREE_DEPTH siblings and indices
-    let proof: MerkleProof<TREE_DEPTH> = MerkleProof {
-        siblings: [200, 300, 400], // Exactly 3 elements
-        path_indices: [0, 1, 0], // Exactly 3 elements
-    };
+    let siblings: [Field; 24] = [
+        200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700,
+        1800, 1900, 2000, 2100, 2200, 2300, 2400, 2500,
+    ];
+    let path_indices: [Field; 24] =
+        [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1];
+    let proof: MerkleProof<TREE_DEPTH> = MerkleProof { siblings, path_indices };
 
     let root = compute_merkle_root(leaf, proof);
     assert(verify_merkle_inclusion(leaf, root, proof));

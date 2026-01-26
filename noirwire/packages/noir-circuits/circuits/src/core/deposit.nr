@@ -64,17 +64,38 @@ fn test_deposit_circuit() {
 
     let commitment = compute_commitment(balance);
 
-    // Mock merkle proof (3 levels for testing)
-    let insertion_proof = MerkleProof { siblings: [200, 300, 400], path_indices: [0, 1, 0] };
+    // Mock merkle proof (24 levels for production)
+    let siblings: [Field; 24] = [
+        200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700,
+        1800, 1900, 2000, 2100, 2200, 2300, 2400, 2500,
+    ];
+    let path_indices: [Field; 24] =
+        [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1];
+    let insertion_proof = MerkleProof { siblings, path_indices };
 
-    // Compute roots manually (simplified)
-    let level1_old = Poseidon2::hash([0, 200], 2);
-    let level2_old = Poseidon2::hash([300, level1_old], 2);
-    let old_root = Poseidon2::hash([level2_old, 400], 2);
+    // Compute root by following merkle proof path
+    let mut current = 0; // old_leaf (empty)
+    for i in 0..24 {
+        let is_right = path_indices[i];
+        if is_right == 0 {
+            current = Poseidon2::hash([current, siblings[i]], 2);
+        } else {
+            current = Poseidon2::hash([siblings[i], current], 2);
+        }
+    }
+    let old_root = current;
 
-    let level1_new = Poseidon2::hash([commitment, 200], 2);
-    let level2_new = Poseidon2::hash([300, level1_new], 2);
-    let new_root = Poseidon2::hash([level2_new, 400], 2);
+    // Now compute new root with commitment
+    current = commitment;
+    for i in 0..24 {
+        let is_right = path_indices[i];
+        if is_right == 0 {
+            current = Poseidon2::hash([current, siblings[i]], 2);
+        } else {
+            current = Poseidon2::hash([siblings[i], current], 2);
+        }
+    }
+    let new_root = current;
 
     let public = DepositPublic {
         deposit_amount,
