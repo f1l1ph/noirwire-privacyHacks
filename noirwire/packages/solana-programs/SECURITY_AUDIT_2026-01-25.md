@@ -60,6 +60,7 @@ fn alt_bn128_addition(p1: &[u8], p2: &[u8]) -> Result<Vec<u8>> {
 **Impact:** Zero cryptographic security - any "proof" will fail. Protocol cannot operate as designed.
 
 **Remediation:**
+
 ```toml
 # Use Light Protocol's verified implementation
 [dependencies]
@@ -79,16 +80,19 @@ pub const HISTORICAL_ROOTS_SIZE: usize = 8;  // Blueprint specifies 900!
 ```
 
 **Impact:**
+
 - Spending window: **3.2 seconds** (vs. 6 minutes)
 - Users have only 3.2 seconds to submit withdrawal proofs
 - Network congestion will brick the system
 
 **Remediation (Short-term):**
+
 ```rust
 pub const HISTORICAL_ROOTS_SIZE: usize = 100;  // ~40 seconds minimum
 ```
 
 **Remediation (Production):**
+
 ```rust
 // Separate PDA for historical roots
 #[account]
@@ -114,11 +118,13 @@ pool.update_root(new_root);  // ⚠️ No validation
 ```
 
 **Impact:**
+
 - **Critical security bypass:** Attacker can submit arbitrary roots
 - **Double-spend attacks:** Can create fake nullifiers_root
 - **Total loss of funds:** Entire pool can be drained
 
 **Remediation:**
+
 ```rust
 pub fn settle_batch(
     ctx: Context<SettleBatch>,
@@ -152,11 +158,13 @@ pub fn settle_batch(
 **Issue:** No implementation for recording individual nullifiers after batch settlement.
 
 **Impact:**
+
 - Incomplete batch settlement flow
 - **Double-spend vulnerability:** Without nullifier PDAs, same commitment can be withdrawn multiple times
 - Critical security mechanism missing
 
 **Remediation:**
+
 ```rust
 pub fn record_nullifier(
     ctx: Context<RecordNullifier>,
@@ -201,10 +209,12 @@ pub per_authority: Signer<'info>,  // ⚠️ No constraint validating this!
 ```
 
 **Impact:**
+
 - **Anyone can call settle_batch** and manipulate pool state
 - Combined with CRITICAL-03, allows total pool drainage
 
 **Remediation:**
+
 ```rust
 #[derive(Accounts)]
 pub struct SettleBatch<'info> {
@@ -236,9 +246,11 @@ pool.total_shielded = pool
 ```
 
 **Impact:**
+
 - **Pool insolvency:** Can create commitments without backing tokens
 
 **Remediation:**
+
 ```rust
 // Before transfer
 let vault_balance_before = ctx.accounts.pool_vault.amount;
@@ -279,6 +291,7 @@ pool.total_shielded = pool
 ```
 
 **Remediation:**
+
 ```rust
 // Before transfer: verify pool has sufficient balance
 require!(
@@ -314,10 +327,12 @@ pub fn store_vk(
 ```
 
 **Impact:**
+
 - **VK substitution attack:** Attacker replaces legitimate VK with malicious one
 - **Fund drainage:** Can install VK that accepts invalid proofs
 
 **Remediation:**
+
 ```rust
 #[derive(Accounts)]
 pub struct StoreVk<'info> {
@@ -355,11 +370,13 @@ pub struct StoreVk<'info> {
 ```
 
 **Impact:**
+
 - Cannot execute private transactions in TEE
 - Front-running protection missing
 - Core privacy feature non-functional
 
 **Remediation:**
+
 1. Resolve version conflicts
 2. Implement delegation instructions
 3. Add TEE authorization
@@ -373,9 +390,11 @@ pub struct StoreVk<'info> {
 **Issue:** No validation that `old_root` in proof is recent enough.
 
 **Impact:**
+
 - **Root expiration attacks:** Users can hold onto old proofs indefinitely
 
 **Remediation:**
+
 ```rust
 const MAX_ROOT_AGE_SLOTS: u64 = 900;  // ~6 minutes
 require!(
@@ -402,10 +421,12 @@ vault.permission_group = vault_id; // Placeholder
 ```
 
 **Impact:**
+
 - Vault membership not enforced in PER TEE
 - Role-based permissions non-functional
 
 **Remediation:**
+
 ```rust
 use per_permission_program::cpi::{create_group, add_member, remove_member};
 
@@ -426,6 +447,7 @@ pub fn create_vault(...) -> Result<()> {
 **Issue:** Circuit ID uses compile-time constant that may not match actual VK.
 
 **Remediation:**
+
 ```rust
 pub struct PoolState {
     pub deposit_circuit_id: [u8; 32],
@@ -441,6 +463,7 @@ pub struct PoolState {
 **Issue:** No way to update verification keys after deployment.
 
 **Remediation:**
+
 ```rust
 pub fn update_vk(
     ctx: Context<UpdateVk>,
@@ -462,16 +485,17 @@ pub fn update_vk(
 **Issue:** ZK verification requires ~600k CU but default is 200k.
 
 **Remediation (Client-side):**
+
 ```typescript
-import { ComputeBudgetProgram } from '@solana/web3.js';
+import { ComputeBudgetProgram } from "@solana/web3.js";
 
 const depositTx = await program.methods
-    .deposit(amount, proofData)
-    .preInstructions([
-        ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 }),
-        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1 })
-    ])
-    .rpc();
+  .deposit(amount, proofData)
+  .preInstructions([
+    ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 }),
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 1 }),
+  ])
+  .rpc();
 ```
 
 ---
@@ -483,6 +507,7 @@ const depositTx = await program.methods
 **Issue:** Field conversion doesn't check for malicious encoding.
 
 **Remediation:**
+
 ```rust
 pub fn field_to_u64(field: &[u8; 32]) -> Result<u64> {
     // Check leading bytes
@@ -508,6 +533,7 @@ pub fn field_to_u64(field: &[u8; 32]) -> Result<u64> {
 ### 🟠 HIGH-08 through HIGH-12
 
 See full audit report for details on:
+
 - Missing rent exemption checks
 - Missing events for critical operations
 - Missing pausable constraint on batch settlement
@@ -523,6 +549,7 @@ See full audit report for details on:
 **Issue:** Circular buffer doesn't clear overwritten slots.
 
 **Remediation:**
+
 ```rust
 pub fn update_root(&mut self, new_root: [u8; 32]) {
     self.historical_roots[self.roots_index as usize] = self.commitment_root;
@@ -541,6 +568,7 @@ pub fn update_root(&mut self, new_root: [u8; 32]) {
 ### 🟡 MEDIUM-02 through MEDIUM-15
 
 See full audit report for details on:
+
 - Account discriminator validation
 - Overflow protection in statistics
 - Error messages
@@ -563,6 +591,7 @@ See full audit report for details on:
 ### 🔵 LOW-01 through LOW-08
 
 See full audit report for details on:
+
 - Missing documentation comments
 - Inconsistent naming conventions
 - Magic numbers in code
@@ -578,25 +607,25 @@ See full audit report for details on:
 
 ### ✅ Implemented Features
 
-| Feature | Status |
-|---------|--------|
-| Pool initialization | ✅ Complete |
-| Nullifier PDA | ✅ Complete |
-| Pause mechanism | ✅ Complete |
-| Verification key storage | ✅ Complete |
-| Vault creation | ⚠️ Missing PER CPI |
+| Feature                  | Status             |
+| ------------------------ | ------------------ |
+| Pool initialization      | ✅ Complete        |
+| Nullifier PDA            | ✅ Complete        |
+| Pause mechanism          | ✅ Complete        |
+| Verification key storage | ✅ Complete        |
+| Vault creation           | ⚠️ Missing PER CPI |
 
 ### ❌ Missing Features
 
-| Feature | Priority |
-|---------|----------|
-| ZK proof verification | CRITICAL |
+| Feature                  | Priority |
+| ------------------------ | -------- |
+| ZK proof verification    | CRITICAL |
 | Batch proof verification | CRITICAL |
-| `record_nullifier` | CRITICAL |
-| PER delegation | HIGH |
-| `update_vk` instruction | HIGH |
-| Nullifier cleanup | HIGH |
-| Emergency withdrawal | MEDIUM |
+| `record_nullifier`       | CRITICAL |
+| PER delegation           | HIGH     |
+| `update_vk` instruction  | HIGH     |
+| Nullifier cleanup        | HIGH     |
+| Emergency withdrawal     | MEDIUM   |
 
 ### ⚠️ Critical Deviations
 
@@ -666,35 +695,35 @@ See full audit report for details on:
 
 ```typescript
 describe("Security: Critical Attack Vectors", () => {
-    it("prevents double-spend with duplicate nullifier");
-    it("rejects proof with tampered public inputs");
-    it("blocks unauthorized batch settlement");
-    it("prevents VK substitution by non-admin");
-    it("rejects deposits without token transfer");
-    it("prevents withdrawal exceeding pool balance");
-    it("enforces historical root expiration");
-    it("validates nullifier merkle proof correctness");
+  it("prevents double-spend with duplicate nullifier");
+  it("rejects proof with tampered public inputs");
+  it("blocks unauthorized batch settlement");
+  it("prevents VK substitution by non-admin");
+  it("rejects deposits without token transfer");
+  it("prevents withdrawal exceeding pool balance");
+  it("enforces historical root expiration");
+  it("validates nullifier merkle proof correctness");
 });
 
 describe("Security: Economic Attacks", () => {
-    it("prevents inflation via fake batch settlement");
-    it("blocks withdrawal of non-existent commitments");
-    it("prevents root manipulation attacks");
-    it("enforces minimum deposit to prevent spam");
+  it("prevents inflation via fake batch settlement");
+  it("blocks withdrawal of non-existent commitments");
+  it("prevents root manipulation attacks");
+  it("enforces minimum deposit to prevent spam");
 });
 
 describe("Security: Access Control", () => {
-    it("only admin can pause pool");
-    it("only admin can update VK");
-    it("only PER authority can settle batch");
-    it("only vault admin can manage members");
+  it("only admin can pause pool");
+  it("only admin can update VK");
+  it("only PER authority can settle batch");
+  it("only vault admin can manage members");
 });
 
 describe("Security: State Consistency", () => {
-    it("maintains total_shielded == vault_balance invariant");
-    it("prevents root index overflow");
-    it("ensures nullifier uniqueness");
-    it("validates all account owners");
+  it("maintains total_shielded == vault_balance invariant");
+  it("prevents root index overflow");
+  it("ensures nullifier uniqueness");
+  it("validates all account owners");
 });
 ```
 
@@ -708,6 +737,7 @@ cargo fuzz run batch_settlement_fuzz
 ```
 
 Target inputs:
+
 - Proof data (random bytes)
 - Public inputs (boundary values, overflow)
 - Nullifiers (collisions, duplicates)
@@ -720,6 +750,7 @@ Target inputs:
 Before mainnet deployment:
 
 **Critical (Must Complete):**
+
 - [ ] All CRITICAL issues resolved
 - [ ] All HIGH issues resolved
 - [ ] Third-party security audit completed
@@ -728,6 +759,7 @@ Before mainnet deployment:
 - [ ] Multisig for admin authority configured
 
 **Important (Should Complete):**
+
 - [ ] MEDIUM issues risk-assessed and addressed/accepted
 - [ ] Comprehensive test suite passing (>95% coverage)
 - [ ] Fuzz testing completed (1M+ iterations)
@@ -736,6 +768,7 @@ Before mainnet deployment:
 - [ ] Nullifier cleanup mechanism active
 
 **Nice to Have:**
+
 - [ ] Monitoring and alerting deployed
 - [ ] Incident response plan documented
 - [ ] User documentation complete
@@ -798,6 +831,7 @@ The system has a solid architectural foundation but **critical security gaps pre
 ### File-Specific Issues
 
 **Most Critical Files:**
+
 - `src/groth16.rs` - CRITICAL-01 (ZK verification broken)
 - `src/state/pool_state.rs` - CRITICAL-02 (buffer too small)
 - `src/instructions/settle_batch.rs` - CRITICAL-03, CRITICAL-05
@@ -819,6 +853,7 @@ TOTAL:    43 issues identified
 ### Contact for Clarifications
 
 For questions about this audit report or remediation guidance, please reference:
+
 - Blueprint 10: Solana Programs Architecture
 - Blueprint 11: Vault Program
 - This audit report ID: NWSP-2026-01-25

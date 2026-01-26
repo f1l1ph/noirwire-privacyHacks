@@ -1,31 +1,11 @@
 # NoirWire Solana Programs
 
-This package contains the Solana on-chain programs for NoirWire's private payment system.
+Solana on-chain programs for NoirWire's private payment system.
 
-## Initialization Status
+## Remaining Work
 
-**Current Phase: Initial Infrastructure Setup**
-
-This commit initializes the program structure and account definitions. Core ZK verification functionality is stubbed and requires implementation in Phase 2.
-
-### What's Implemented
-
-- Program structure and account definitions
-- Instruction handlers with proper account constraints
-- Event emission framework
-- PDA derivation patterns
-- Error handling infrastructure
-- Basic state management
-
-### What's Stubbed (TODO)
-
-- ZK proof verification (alt_bn128 integration)
-- Merkle tree operations
-- Nullifier validation logic
-- PER Permission Program CPI integration
-- Comprehensive test suite
-
-**WARNING: Do NOT deploy to production.** This is a PoC initialization only.
+- [ ] Full E2E integration tests with real ZK proofs on devnet
+- [ ] Generate vanity program IDs (`NwirePoo1...`)
 
 ## Programs
 
@@ -40,21 +20,20 @@ Main state management program for private transactions.
 - `withdraw` - Unshield tokens (private → public)
 - `settle_batch` - Batch settlement from PER
 - `set_paused` - Emergency pause
+- `set_emergency_mode` - Enable emergency withdrawals
+- `emergency_withdraw` - Admin-authorized fund recovery
+- `init_historical_roots` - Initialize 900-root PDA
+- `cleanup_nullifier` - Reclaim rent from old nullifiers
 
 **Key Accounts:**
 
-- `PoolState` - Main pool state with merkle roots
+- `PoolState` - Main pool state with merkle roots, versioning
+- `HistoricalRoots` - 900-capacity ring buffer PDA
 - `NullifierEntry` - Individual nullifier PDAs
-
-**Known Limitations (PoC):**
-
-- `HISTORICAL_ROOTS_SIZE = 8` (3.2 second spending window) vs blueprint spec of 900 (6 minutes)
-- Reduced to fit Solana's 4KB stack limit
-- Production MUST implement separate PDA for historical roots storage
 
 ### 2. ZK Verifier (`zk-verifier`)
 
-Groth16 proof verification using Solana's alt_bn128 syscalls.
+Groth16 proof verification using the audited `groth16-solana` library.
 
 **Instructions:**
 
@@ -63,11 +42,9 @@ Groth16 proof verification using Solana's alt_bn128 syscalls.
 
 **Features:**
 
-- BN254 elliptic curve operations
-- Pairing-based verification
-- ~400k-500k compute units per proof
-
-**CRITICAL TODO:** ZK verification is currently stubbed. The `alt_bn128` module integration needs to be implemented in `programs/zk-verifier/src/groth16.rs`. Requires `solana-program = "2.0"` with alt_bn128 syscall support.
+- BN254 elliptic curve operations via alt_bn128 syscalls
+- Audited by Light Protocol security audit
+- ~150k-200k compute units per verification
 
 ### 3. Vault Registry (`vault-registry`)
 
@@ -120,6 +97,58 @@ anchor deploy
 anchor deploy --provider.cluster devnet
 ```
 
+## Testing
+
+### Quick Start
+
+```bash
+# Localnet (recommended for dev)
+anchor test
+
+# Just unit tests (no validator needed)
+cargo test --package shielded-pool
+```
+
+### Manual Validator
+
+```bash
+# Terminal 1 - start validator
+solana-test-validator --reset
+
+# Terminal 2 - run tests
+anchor test --skip-local-validator
+```
+
+### Devnet Testing
+
+```bash
+solana config set --url devnet
+solana airdrop 2
+anchor deploy --provider.cluster devnet
+anchor test --provider.cluster devnet --skip-deploy
+```
+
+### Test Files
+
+| File                                   | Purpose                   |
+| -------------------------------------- | ------------------------- |
+| `tests/shielded-pool.ts`               | Basic deposit/withdraw    |
+| `tests/adversarial.ts`                 | Security attack scenarios |
+| `tests/shielded-pool-comprehensive.ts` | Full integration          |
+
+### Troubleshooting
+
+```bash
+# View logs
+solana logs
+
+# Check validator
+solana cluster-version
+
+# Port in use?
+pkill solana-test-validator
+```
+
 ## Architecture
 
 Based on the official blueprints:
@@ -127,78 +156,6 @@ Based on the official blueprints:
 - **10_Solana_Programs.md** - Main architecture
 - **11_Vault_Program.md** - Vault specifications
 - **01_Zk_Noir_Circuits.md** - ZK circuits
-
-### Implementation Notes
-
-**Blueprint Adherence:**
-
-- Program structure: 100% matches blueprint
-- Account definitions: 100% matches blueprint
-- PDA derivation patterns: Follows blueprint exactly
-- Error handling: Custom errors as specified
-
-**Deviations (Temporary for PoC):**
-
-- `HISTORICAL_ROOTS_SIZE = 8` instead of 900 (stack limit constraint)
-- Deposit/Withdraw instructions missing `ProofData` parameter (added in Phase 2)
-- ZK verification stubbed (requires alt_bn128 integration)
-- PER Permission Program integration stubbed (requires CPI implementation)
-
-## Critical TODOs (Phase 2)
-
-### Priority 1: ZK Verification (BLOCKER)
-
-**File:** `programs/zk-verifier/src/groth16.rs`
-
-- [ ] Implement `alt_bn128_addition()` using `solana_program::alt_bn128`
-- [ ] Implement `alt_bn128_multiplication()` using syscalls
-- [ ] Implement `alt_bn128_pairing()` for final verification
-- [ ] Verify `solana-program = "2.0"` dependency supports alt_bn128
-- [ ] Test with actual Groth16 proofs from Noir circuits
-
-**Files needing ZK integration:**
-
-- `programs/shielded-pool/src/instructions/deposit.rs:49` - Add proof verification
-- `programs/shielded-pool/src/instructions/withdraw.rs:68` - Add proof verification
-- `programs/shielded-pool/src/instructions/settle_batch.rs:33` - Add batch proof verification
-
-### Priority 2: Noir Circuit Implementation
-
-**Location:** `../noir-circuits/circuits/src/`
-
-- [ ] Implement Merkle tree verification in `primitives/merkle.nr`
-- [ ] Complete deposit circuit logic in `core/deposit.nr`
-- [ ] Complete transfer circuit with nullifier checks in `core/transfer.nr`
-- [ ] Complete withdraw circuit in `core/withdraw.nr`
-- [ ] Implement batch aggregation in `batch/batch_{2,4,8}.nr`
-- [ ] Generate verification keys for all circuits
-- [ ] Test proof generation and verification end-to-end
-
-### Priority 3: Testing
-
-- [ ] Add basic initialization tests (account creation, state transitions)
-- [ ] Write unit tests for each instruction handler
-- [ ] Integration tests with mock proofs (before ZK implementation)
-- [ ] Full E2E tests with real ZK proofs (after ZK implementation)
-- [ ] Fuzzing for edge cases and security
-
-### Priority 4: PER Integration
-
-**File:** `programs/vault-registry/src/lib.rs:33-35`
-
-- [ ] Implement CPI to PER Permission Program for group creation
-- [ ] Add delegation hooks using `ephemeral-rollups-sdk`
-- [ ] Test batch settlement flow from PER to shielded pool
-- [ ] Remove placeholder `vault.permission_group = vault_id` hack
-
-### Priority 5: Production Readiness
-
-- [ ] Increase `HISTORICAL_ROOTS_SIZE` to 900 OR implement PDA solution
-- [ ] Add `ProofData` parameter to deposit/withdraw instruction signatures
-- [ ] Security audit of all constraint checks
-- [ ] Validate nullifier uniqueness enforcement
-- [ ] Test emergency pause scenarios
-- [ ] Generate final program IDs for mainnet
 
 ## Build Verification
 

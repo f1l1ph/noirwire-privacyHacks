@@ -170,6 +170,7 @@ impl PoolState {
     /// SECURITY:
     /// - Clears the next slot to prevent accepting very old roots after wraparound
     /// - Tracks slot for each root for expiration enforcement (HIGH-01)
+    ///
     /// See: Security Audit MEDIUM-01, HIGH-01
     pub fn update_root(&mut self, new_root: [u8; 32], current_slot: u64) {
         // Store current root in history with its slot
