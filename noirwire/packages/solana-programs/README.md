@@ -4,8 +4,7 @@ Solana on-chain programs for NoirWire's private payment system.
 
 ## Remaining Work
 
-- [ ] Full E2E integration tests with real ZK proofs on devnet
-- [ ] Generate vanity program IDs (`NwirePoo1...`)
+- [ ] Full E2E integration tests with real ZK proofs (see `E2E_IMPLEMENTATION_GUIDE.md`)
 
 ## Programs
 
@@ -203,13 +202,13 @@ Note: Circuits are configured as a library (`type = "lib"`) for shared primitive
 
 ## Program IDs
 
-Current devnet program IDs (generated during development):
+Vanity program IDs (all start with `NWR`):
 
-- Shielded Pool: `GHaaCGvizKd7QVCw93vHHc3bDQ1JNdufT4ZX9RbeR6Pj`
-- ZK Verifier: `E2iDwQ5pjSk4qxmXj7U1NUsqPyFGyfeVYj1CBXqL6fBw`
-- Vault Registry: `FXVuM3iLQgejHHoTw6Gqh77MEGcniR6VK8sHTwPSRSvG`
-
-Note: These will be regenerated for production deployment with vanity addresses like `NwirePoo1...`
+| Program        | ID                                            |
+| -------------- | --------------------------------------------- |
+| Shielded Pool  | `NWRZDZJMfUAd3iVvdMhpsKht5bgHZGPzynHhQ2JssQ2` |
+| Vault Registry | `NWR5FUFsnn3x5gutivRDnBiFA6h1QZVVdAWM4PNdVEn` |
+| ZK Verifier    | `NWRNe5ezj9SxCXVqrXbycbpT8drAvuaBknX3ChgGbnx` |
 
 ## Dependencies
 

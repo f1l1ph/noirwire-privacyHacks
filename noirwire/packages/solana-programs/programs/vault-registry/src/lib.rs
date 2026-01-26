@@ -7,7 +7,7 @@ use ephemeral_rollups_sdk::access_control::instructions::{
 use ephemeral_rollups_sdk::access_control::structs::{Member, MembersArgs};
 use ephemeral_rollups_sdk::consts::PERMISSION_PROGRAM_ID;
 
-declare_id!("FWaonsWs2LpGTWBEPntPBvPSeKxjcXNeRBRcsuKT9x18");
+declare_id!("NWR5FUFsnn3x5gutivRDnBiFA6h1QZVVdAWM4PNdVEn");
 
 pub mod errors;
 pub mod events;
