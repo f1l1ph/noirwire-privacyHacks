@@ -69,6 +69,16 @@ pub struct Withdraw<'info> {
     )]
     pub pool_authority: AccountInfo<'info>,
 
+    /// Historical roots PDA for extended spending window (optional for production)
+    /// SECURITY (CRITICAL-02): Provides 900-slot (~6 min) spending window
+    /// If provided, root validation also checks this extended buffer
+    /// Uses zero-copy (AccountLoader) due to ~36KB size
+    #[account(
+        seeds = [HISTORICAL_ROOTS_SEED, pool.key().as_ref()],
+        bump,
+    )]
+    pub historical_roots: Option<AccountLoader<'info, HistoricalRoots>>,
+
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
 }
@@ -90,11 +100,35 @@ pub fn handler(
     // 1. Extract amount from proof (convert from field back to u64)
     let amount = field_to_u64(&proof_data.amount)?;
 
-    // 2. SECURITY (HIGH-01): Validate old_root with expiration enforcement
-    // Roots older than MAX_ROOT_AGE_SLOTS (~6 min) are rejected
+    // 2. SECURITY (CRITICAL-02 + HIGH-01): Validate old_root with expiration enforcement
+    // First check the pool's internal historical_roots (32 slots)
+    let root_valid_in_pool = pool.is_valid_root_with_expiration(&proof_data.old_root, current_slot);
+
+    // If historical_roots PDA is provided, also check the extended buffer (900 slots)
+    let root_valid_in_extended =
+        if let Some(ref historical_roots_loader) = ctx.accounts.historical_roots {
+            let historical_roots = historical_roots_loader.load()?;
+            // Verify the historical roots account belongs to this pool
+            require!(
+                historical_roots.pool == pool.key(),
+                PoolError::InvalidVerificationKey
+            );
+            historical_roots.contains_with_expiration(&proof_data.old_root, current_slot)
+        } else {
+            false
+        };
+
+    // Root must be valid in at least one of the buffers
     require!(
-        pool.is_valid_root_with_expiration(&proof_data.old_root, current_slot),
+        root_valid_in_pool || root_valid_in_extended,
         PoolError::MerkleRootExpired
+    );
+
+    msg!(
+        "Root validated: in_pool={}, in_extended={}, current_slot={}",
+        root_valid_in_pool,
+        root_valid_in_extended,
+        current_slot
     );
 
     // 3. SECURITY (HIGH-02): Verify VK hash matches pool's expected VK

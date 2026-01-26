@@ -51,6 +51,17 @@ pub struct Deposit<'info> {
     #[account(mut)]
     pub depositor: Signer<'info>,
 
+    /// Historical roots PDA for extended spending window (optional for production)
+    /// SECURITY (CRITICAL-02): When provided, new roots are also pushed here
+    /// for 900-slot (~6 min) spending window
+    /// Uses zero-copy (AccountLoader) due to ~36KB size
+    #[account(
+        mut,
+        seeds = [HISTORICAL_ROOTS_SEED, pool.key().as_ref()],
+        bump,
+    )]
+    pub historical_roots: Option<AccountLoader<'info, HistoricalRoots>>,
+
     /// SPL Token program
     pub token_program: Program<'info, Token>,
 }
@@ -137,6 +148,7 @@ pub fn handler(ctx: Context<Deposit>, amount: u64, proof_data: DepositProofData)
 
     // 8. Update pool state with new merkle root from proof
     let new_root = proof_data.new_root;
+    let old_root = pool.commitment_root;
     pool.update_root(new_root, current_slot);
     pool.total_shielded = pool
         .total_shielded
@@ -147,7 +159,21 @@ pub fn handler(ctx: Context<Deposit>, amount: u64, proof_data: DepositProofData)
         .checked_add(1)
         .ok_or(PoolError::Overflow)?;
 
-    // 9. Emit event
+    // 9. SECURITY (CRITICAL-02): Also push to HistoricalRoots PDA if available
+    // This provides the extended 900-slot (~6 min) spending window
+    if let Some(ref historical_roots_loader) = ctx.accounts.historical_roots {
+        let mut historical_roots = historical_roots_loader.load_mut()?;
+        // Verify the historical roots account belongs to this pool
+        require!(
+            historical_roots.pool == pool.key(),
+            PoolError::InvalidVerificationKey
+        );
+        // Push the OLD root before it gets overwritten (same as pool.update_root)
+        historical_roots.push(old_root, current_slot);
+        msg!("Root pushed to extended historical buffer (900-slot capacity)");
+    }
+
+    // 10. Emit event
     emit!(DepositEvent {
         pool: pool.key(),
         commitment: proof_data.new_commitment,

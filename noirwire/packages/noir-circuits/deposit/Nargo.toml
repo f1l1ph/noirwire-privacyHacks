@@ -1,0 +1,7 @@
+[package]
+name = "deposit"
+type = "bin"
+authors = ["NoirWire Team"]
+
+[dependencies]
+noirwire_circuits = { path = "../circuits" }

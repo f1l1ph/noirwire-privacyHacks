@@ -10,10 +10,10 @@ use anchor_lang::prelude::*;
 /// REQUIREMENTS:
 /// - Pool must be initialized first
 /// - Only the pool authority can call this
-/// - Account size is ~29KB
+/// - Account size is ~36KB (uses zero-copy deserialization)
 pub fn handler(ctx: Context<InitializeHistoricalRoots>) -> Result<()> {
     let pool = &ctx.accounts.pool;
-    let historical_roots = &mut ctx.accounts.historical_roots;
+    let mut historical_roots = ctx.accounts.historical_roots.load_init()?;
 
     // Initialize the historical roots account
     historical_roots.init(pool.key());
@@ -36,7 +36,7 @@ pub struct InitializeHistoricalRoots<'info> {
     )]
     pub pool: Account<'info, PoolState>,
 
-    /// The historical roots PDA to create
+    /// The historical roots PDA to create (zero-copy for large account)
     #[account(
         init,
         payer = authority,
@@ -44,7 +44,7 @@ pub struct InitializeHistoricalRoots<'info> {
         seeds = [HISTORICAL_ROOTS_SEED, pool.key().as_ref()],
         bump
     )]
-    pub historical_roots: Account<'info, HistoricalRoots>,
+    pub historical_roots: AccountLoader<'info, HistoricalRoots>,
 
     /// Pool authority (must match pool.authority)
     #[account(mut)]

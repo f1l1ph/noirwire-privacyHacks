@@ -63,8 +63,8 @@ pub fn handler(
     pool.vk_hash = vk_hash;
     pool.commitment_root = [0u8; 32]; // Empty tree root
     pool.commitment_root_slot = current_slot; // SECURITY (HIGH-01): Track root slot
-    pool.historical_roots = [[0u8; 32]; 32]; // Fixed-size array
-    pool.historical_roots_slots = [0u64; 32]; // SECURITY (HIGH-01): Track historical slots
+    pool.historical_roots = [[0u8; 32]; HISTORICAL_ROOTS_SIZE]; // Production: 900 slots = 6 min window
+    pool.historical_roots_slots = [0u64; HISTORICAL_ROOTS_SIZE]; // SECURITY (HIGH-01): Track historical slots
     pool.roots_index = 0;
     pool.total_shielded = 0;
     pool.paused = false;

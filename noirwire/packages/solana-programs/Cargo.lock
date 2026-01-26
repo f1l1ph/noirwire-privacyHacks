@@ -4208,6 +4208,7 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
+ "bytemuck",
  "num-bigint 0.4.6",
  "num-traits",
  "solana-program-test",

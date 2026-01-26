@@ -4,7 +4,7 @@ use crate::primitives::merkle::{MerkleProof, TREE_DEPTH, verify_merkle_update};
 use crate::primitives::poseidon2::Poseidon2;
 
 /// Public inputs for deposit circuit
-struct DepositPublic {
+pub struct DepositPublic {
     deposit_amount: Field, // Amount being deposited (visible on L1)
     new_commitment: Field, // New balance commitment
     leaf_index: Field, // Index where commitment is inserted
@@ -13,7 +13,7 @@ struct DepositPublic {
 }
 
 /// Private inputs for deposit circuit
-struct DepositPrivate {
+pub struct DepositPrivate {
     owner: Field, // Owner's public key hash
     vault_id: Field, // 0 for solo, vault ID for vault members
     blinding: Field, // Random blinding factor
@@ -22,7 +22,7 @@ struct DepositPrivate {
 
 /// Main deposit circuit
 /// Proves that a public deposit creates a valid private balance
-fn main(public: DepositPublic, private: DepositPrivate) {
+pub fn main(public: DepositPublic, private: DepositPrivate) {
     // 1. Verify commitment is correctly computed
     let balance = Balance {
         owner: private.owner,

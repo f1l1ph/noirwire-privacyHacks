@@ -35,6 +35,17 @@ pub struct SettleBatch<'info> {
     /// SECURITY: Only this authorized PER can call settle_batch (CRITICAL-05)
     pub per_authority: Signer<'info>,
 
+    /// Historical roots PDA for extended spending window (optional for production)
+    /// SECURITY (CRITICAL-02): When provided, old roots are pushed here
+    /// for 900-slot (~6 min) spending window
+    /// Uses zero-copy (AccountLoader) due to ~36KB size
+    #[account(
+        mut,
+        seeds = [HISTORICAL_ROOTS_SEED, pool.key().as_ref()],
+        bump,
+    )]
+    pub historical_roots: Option<AccountLoader<'info, HistoricalRoots>>,
+
     pub system_program: Program<'info, System>,
 }
 
@@ -87,7 +98,21 @@ pub fn handler(ctx: Context<SettleBatch>, proof_data: BatchSettlementProofData) 
     let old_root = pool.commitment_root;
     pool.update_root(new_root, current_slot);
 
-    // 5. Emit event with nullifiers_root (indexer will process individual nullifiers)
+    // 5. SECURITY (CRITICAL-02): Also push to HistoricalRoots PDA if available
+    // This provides the extended 900-slot (~6 min) spending window
+    if let Some(ref historical_roots_loader) = ctx.accounts.historical_roots {
+        let mut historical_roots = historical_roots_loader.load_mut()?;
+        // Verify the historical roots account belongs to this pool
+        require!(
+            historical_roots.pool == pool.key(),
+            PoolError::InvalidVerificationKey
+        );
+        // Push the OLD root before it gets overwritten (same as pool.update_root)
+        historical_roots.push(old_root, current_slot);
+        msg!("Root pushed to extended historical buffer (900-slot capacity)");
+    }
+
+    // 6. Emit event with nullifiers_root (indexer will process individual nullifiers)
     emit!(BatchSettlementEvent {
         pool: pool.key(),
         old_root,

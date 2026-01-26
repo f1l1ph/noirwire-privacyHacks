@@ -8,14 +8,14 @@ use crate::primitives::merkle::{
 use crate::primitives::nullifier::compute_nullifier;
 
 /// Public inputs for transfer circuit
-struct TransferPublic {
+pub struct TransferPublic {
     nullifier: Field, // Prevents double-spend
     old_root: Field, // Current merkle root
     new_root: Field, // New merkle root after transfer
 }
 
 /// Private inputs for transfer circuit
-struct TransferPrivate {
+pub struct TransferPrivate {
     // Sender's balance
     sender_owner: Field,
     sender_amount: Field,
@@ -44,7 +44,7 @@ struct TransferPrivate {
 
 /// Main transfer circuit
 /// Proves a valid private transfer between two parties
-fn main(public: TransferPublic, private: TransferPrivate) {
+pub fn main(public: TransferPublic, private: TransferPrivate) {
     // ===== SENDER CHECKS =====
 
     // 1. Reconstruct sender's commitment

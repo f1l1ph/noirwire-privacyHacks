@@ -19,6 +19,7 @@ idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 [dependencies]
 anchor-lang = "0.31.1"
 anchor-spl = "0.31.1"
+bytemuck = "1.14"
 zk-verifier = { path = "../zk-verifier", features = ["cpi"] }
 num-bigint = "0.4"
 num-traits = "0.2"

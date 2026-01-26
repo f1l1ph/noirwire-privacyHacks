@@ -1,8 +1,8 @@
 // NoirWire ZK Circuits Library
 // Main exports for all circuits
 
-mod primitives;
-mod core;
+pub mod primitives;
+pub mod core;
 mod batch;
 mod vault;
 mod tests;

@@ -3,22 +3,25 @@ use anchor_lang::prelude::*;
 
 /// Production Historical Roots PDA
 ///
-/// This separate account stores a ring buffer of 900 historical merkle roots,
-/// providing a ~6 minute spending window as specified in the blueprints.
+/// This separate account stores a ring buffer of 256 historical merkle roots,
+/// providing extended root validation beyond the pool's inline buffer.
 ///
 /// DESIGN:
-/// - 900 roots × 0.4s slot time = 360 seconds = 6 minutes
-/// - Separate from PoolState to keep main account small
-/// - Referenced by pool_state.historical_roots_pda
+/// - Inline buffer (PoolState): 16 roots for quick lookups
+/// - Extended buffer (HistoricalRoots PDA): 256 roots (~100 seconds at 0.4s slots)
+/// - Combined: Total 272 roots of buffer capacity
+/// - Uses zero-copy deserialization for performance
 ///
-/// STORAGE (Updated for HIGH-01 slot tracking):
-/// - 8 (discriminator) + 32 (pool) + 1 (version) + 2 (roots_index u16)
-/// - + 900 * 32 (roots) + 900 * 8 (slots)
-/// - Total: ~36,043 bytes (fits in Solana account limits of ~10MB)
+/// STORAGE:
+/// - 8 (discriminator) + 1 (version) + 3 (padding) + 2 (roots_index) + 2 (padding)
+/// - + 32 (pool pubkey) + 256 * 32 (roots) + 256 * 8 (slots)
+/// - Total: ~10,288 bytes
+///
+/// NOTE: For full 6-minute (900-slot) window, client should track additional
+/// roots off-chain or multiple HistoricalRoots PDAs can be chained.
 ///
 /// See: Blueprint 11_Vault_Program.md, Security Audit CRITICAL-02, HIGH-01
-/// Number of historical roots to store (6 minute window at 0.4s slots)
-pub const HISTORICAL_ROOTS_CAPACITY: usize = 900;
+pub const HISTORICAL_ROOTS_CAPACITY: usize = 256;
 
 /// Seeds for deriving the Historical Roots PDA
 pub const HISTORICAL_ROOTS_SEED: &[u8] = b"historical_roots";
@@ -27,43 +30,58 @@ pub const HISTORICAL_ROOTS_SEED: &[u8] = b"historical_roots";
 /// SECURITY (LOW-03): Versioning for future-proof upgrades
 pub const HISTORICAL_ROOTS_VERSION: u8 = 2;
 
-#[account]
+/// Zero-copy account for historical roots buffer
+/// IMPORTANT: Uses zero_copy to avoid BPF stack overflow
+/// Capacity limited to 256 to satisfy bytemuck Pod/Zeroable array bounds
+#[account(zero_copy)]
+#[repr(C)]
 pub struct HistoricalRoots {
     /// Account structure version
     /// SECURITY (LOW-03): Versioning for future-proof upgrades
     pub version: u8,
 
+    /// Padding for alignment (zero_copy requires proper alignment)
+    pub _padding1: [u8; 3],
+
+    /// Current index in the ring buffer (0-255)
+    pub roots_index: u16,
+
+    /// Padding for alignment
+    pub _padding2: [u8; 2],
+
     /// The pool this historical roots account belongs to
     pub pool: Pubkey,
 
-    /// Current index in the ring buffer (0-899)
-    /// Using u16 to handle values up to 65535 (more than enough for 900)
-    pub roots_index: u16,
-
     /// Ring buffer of historical merkle roots
-    /// Size: 900 roots × 32 bytes = 28,800 bytes
+    /// Size: 256 roots × 32 bytes = 8,192 bytes
     pub roots: [[u8; 32]; HISTORICAL_ROOTS_CAPACITY],
 
     /// Ring buffer of slots when each root was added
     /// SECURITY (HIGH-01): Used for root expiration enforcement
-    /// Size: 900 slots × 8 bytes = 7,200 bytes
+    /// Size: 256 slots × 8 bytes = 2,048 bytes
     pub slots: [u64; HISTORICAL_ROOTS_CAPACITY],
 }
 
 impl HistoricalRoots {
     /// Calculate space needed for the account (must be manually specified due to large array)
-    pub const SPACE: usize = 8  // discriminator
+    /// Layout: 8 (discriminator) + 1 (version) + 3 (padding1) + 2 (roots_index) + 2 (padding2)
+    ///         + 32 (pool pubkey) + 256*32 (roots) + 256*8 (slots)
+    pub const SPACE: usize = 8   // discriminator
         + 1                      // version
-        + 32                     // pool pubkey
+        + 3                      // padding1
         + 2                      // roots_index (u16)
-        + (HISTORICAL_ROOTS_CAPACITY * 32)  // roots array
-        + (HISTORICAL_ROOTS_CAPACITY * 8); // slots array (HIGH-01)
+        + 2                      // padding2
+        + 32                     // pool pubkey
+        + (HISTORICAL_ROOTS_CAPACITY * 32)  // roots array (256 * 32 = 8192)
+        + (HISTORICAL_ROOTS_CAPACITY * 8); // slots array (256 * 8 = 2048)
 
-    /// Initialize with all zeros
+    /// Initialize with all zeros (for zero-copy accounts)
     pub fn init(&mut self, pool: Pubkey) {
         self.version = HISTORICAL_ROOTS_VERSION;
-        self.pool = pool;
+        self._padding1 = [0u8; 3];
         self.roots_index = 0;
+        self._padding2 = [0u8; 2];
+        self.pool = pool;
         // roots and slots arrays are already zeroed by Solana account initialization
     }
 
@@ -163,8 +181,10 @@ mod tests {
     fn test_ring_buffer_push() {
         let mut roots = HistoricalRoots {
             version: HISTORICAL_ROOTS_VERSION,
-            pool: Pubkey::default(),
+            _padding1: [0u8; 3],
             roots_index: 0,
+            _padding2: [0u8; 2],
+            pool: Pubkey::default(),
             roots: [[0u8; 32]; HISTORICAL_ROOTS_CAPACITY],
             slots: [0u64; HISTORICAL_ROOTS_CAPACITY],
         };
@@ -189,8 +209,10 @@ mod tests {
     fn test_root_expiration() {
         let mut roots = HistoricalRoots {
             version: HISTORICAL_ROOTS_VERSION,
-            pool: Pubkey::default(),
+            _padding1: [0u8; 3],
             roots_index: 0,
+            _padding2: [0u8; 2],
+            pool: Pubkey::default(),
             roots: [[0u8; 32]; HISTORICAL_ROOTS_CAPACITY],
             slots: [0u64; HISTORICAL_ROOTS_CAPACITY],
         };
@@ -214,8 +236,10 @@ mod tests {
     fn test_wraparound() {
         let mut roots = HistoricalRoots {
             version: HISTORICAL_ROOTS_VERSION,
-            pool: Pubkey::default(),
+            _padding1: [0u8; 3],
             roots_index: (HISTORICAL_ROOTS_CAPACITY - 1) as u16,
+            _padding2: [0u8; 2],
+            pool: Pubkey::default(),
             roots: [[0u8; 32]; HISTORICAL_ROOTS_CAPACITY],
             slots: [0u64; HISTORICAL_ROOTS_CAPACITY],
         };
@@ -234,11 +258,12 @@ mod tests {
         // Verify space is within Solana limits (max 10MB)
         // Using const assertion to satisfy clippy
         const _: () = assert!(HistoricalRoots::SPACE < 10 * 1024 * 1024);
-        // Verify expected size (updated with slots array and version)
-        // 8 (discriminator) + 1 (version) + 32 (pool) + 2 (roots_index) + 900*32 (roots) + 900*8 (slots)
+        // Verify expected size (updated with slots array and padding)
+        // 8 (discriminator) + 1 (version) + 3 (padding1) + 2 (roots_index) + 2 (padding2)
+        // + 32 (pool) + 256*32 (roots) + 256*8 (slots)
         assert_eq!(
             HistoricalRoots::SPACE,
-            8 + 1 + 32 + 2 + (900 * 32) + (900 * 8)
+            8 + 1 + 3 + 2 + 2 + 32 + (256 * 32) + (256 * 8)
         );
     }
 }

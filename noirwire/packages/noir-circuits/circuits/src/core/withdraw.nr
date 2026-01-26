@@ -8,7 +8,7 @@ use crate::primitives::merkle::{
 use crate::primitives::nullifier::compute_nullifier;
 
 /// Public inputs for withdraw circuit
-struct WithdrawPublic {
+pub struct WithdrawPublic {
     amount: Field, // Amount being withdrawn
     recipient: Field, // L1 recipient address
     nullifier: Field, // Prevents double-spend
@@ -17,7 +17,7 @@ struct WithdrawPublic {
 }
 
 /// Private inputs for withdraw circuit
-struct WithdrawPrivate {
+pub struct WithdrawPrivate {
     owner: Field,
     balance: Field,
     vault_id: Field,
@@ -33,7 +33,7 @@ struct WithdrawPrivate {
 
 /// Main withdraw circuit
 /// Proves a valid withdrawal from private to public
-fn main(public: WithdrawPublic, private: WithdrawPrivate) {
+pub fn main(public: WithdrawPublic, private: WithdrawPrivate) {
     // 1. Reconstruct commitment
     let balance = Balance {
         owner: private.owner,

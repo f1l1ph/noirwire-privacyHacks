@@ -1,18 +1,18 @@
 use anchor_lang::prelude::*;
 
-/// Configuration: Historical roots ring buffer size
+/// Configuration: Inline historical roots ring buffer size (in PoolState)
 ///
-/// DESIGN DECISION (Security Audit 2026-01-25):
-/// - 32 roots × 0.4s = ~13 seconds spending window
-/// - Trade-off: 32 × 32 bytes = 1 KB (fits within Solana account limits)
-/// - This is a minimal viable window for testing
+/// NOTE: This is a SMALL inline buffer for quick lookups. The full extended
+/// buffer is stored in the separate HistoricalRoots PDA (256 roots) to avoid
+/// stack overflow during account initialization.
 ///
-/// PRODUCTION TODO: Implement separate PDA for full 900-slot buffer
-/// - 900 roots × 0.4s = 6 minutes spending window (blueprint specification)
-/// - Requires separate HistoricalRoots PDA account
+/// DESIGN DECISION:
+/// - Inline buffer: 4 roots × 32 bytes = 128 bytes (minimal stack usage)
+/// - Extended buffer: 256 roots in HistoricalRoots PDA (~10KB)
+/// - Combined: Total 260 roots (~100 seconds buffer capacity)
 ///
-/// See: Security Audit Report CRITICAL-02
-pub const HISTORICAL_ROOTS_SIZE: usize = 32;
+/// See: Blueprint 10_Solana_Programs.md, historical_roots.rs
+pub const HISTORICAL_ROOTS_SIZE: usize = 4;
 
 /// Merkle tree depth - MUST match circuit TREE_DEPTH (24 levels = ~16M leaves)
 pub const TREE_DEPTH: usize = 24;
@@ -61,14 +61,17 @@ pub struct PoolState {
     pub commitment_root_slot: u64,
 
     /// Historical roots (for delayed spending - keeps last N roots valid)
-    /// Ring buffer of size 32 for ~13 second spending window
-    pub historical_roots: [[u8; 32]; 32],
+    /// INLINE buffer: 16 roots for quick lookups, full 900-root buffer in HistoricalRoots PDA
+    /// SECURITY: For full 6-min spending window, use HistoricalRoots PDA
+    pub historical_roots: [[u8; 32]; HISTORICAL_ROOTS_SIZE],
 
     /// Slots when each historical root was added
-    /// SECURITY (HIGH-01): Tracks root age for expiration
-    pub historical_roots_slots: [u64; 32],
+    /// SECURITY (HIGH-01): Tracks root age for expiration (inline buffer only)
+    pub historical_roots_slots: [u64; HISTORICAL_ROOTS_SIZE],
 
-    pub roots_index: u8,
+    /// Current index in the inline ring buffer (0 to HISTORICAL_ROOTS_SIZE-1)
+    /// Note: Full historical buffer uses HistoricalRoots PDA with its own index
+    pub roots_index: u16,
 
     /// Total shielded balance (for accounting, public info)
     pub total_shielded: u64,
@@ -177,8 +180,8 @@ impl PoolState {
         self.historical_roots[self.roots_index as usize] = self.commitment_root;
         self.historical_roots_slots[self.roots_index as usize] = self.commitment_root_slot;
 
-        // Calculate next index
-        let next_index = (self.roots_index + 1) % (HISTORICAL_ROOTS_SIZE as u8);
+        // Calculate next index (wraps around using modulo)
+        let next_index = ((self.roots_index as usize + 1) % HISTORICAL_ROOTS_SIZE) as u16;
 
         // Clear slot about to be overwritten (mark as invalid)
         // This ensures wraparound doesn't allow very old roots

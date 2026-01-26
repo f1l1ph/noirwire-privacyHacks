@@ -7,6 +7,10 @@ import nacl from "tweetnacl";
 import type { NoirWireWalletConfig, Balance, ZkProof, ApiResponse } from "@noirwire/types";
 import { generateSalt, bytesToHex } from "@noirwire/utils";
 
+// Re-export crypto and proof modules
+export * from "./crypto";
+export * from "./proof";
+
 // ============================================
 // NoirWire Wallet
 // ============================================
@@ -305,5 +309,23 @@ export class NoirWireClient {
 // Exports
 // ============================================
 
-export * from "@noirwire/types";
+// Re-export types, excluding names that conflict with crypto module
+export type {
+  ApiResponse,
+  Commitment,
+  Nullifier,
+  NoirWireWalletConfig,
+  EncryptedNote,
+  Vault,
+  VaultMember,
+  ZkProof,
+  TransferProofInputs,
+  DepositProofInputs,
+  WithdrawProofInputs,
+  TransactionType,
+  TransactionStatus,
+  Transaction,
+} from "@noirwire/types";
+
+// Re-export utils - Balance is defined in crypto module
 export * from "@noirwire/utils";

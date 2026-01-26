@@ -39,7 +39,7 @@ use groth16_solana::{
 /// ## Compute Budget
 ///
 /// Typical verification costs ~150k-200k compute units. Set appropriate limits:
-/// ```rust
+/// ```rust,ignore
 /// solana_program::compute_budget::request_units(250_000, 0)?;
 /// ```
 /// Groth16 proof structure for BN254 curve
