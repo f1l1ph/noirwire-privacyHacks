@@ -11,6 +11,9 @@ pub enum PoolError {
     #[msg("Invalid merkle root")]
     InvalidMerkleRoot,
 
+    #[msg("Merkle root has expired (older than MAX_ROOT_AGE_SLOTS)")]
+    MerkleRootExpired,
+
     #[msg("Arithmetic overflow")]
     Overflow,
 
@@ -35,6 +38,9 @@ pub enum PoolError {
     #[msg("Invalid verification key")]
     InvalidVerificationKey,
 
+    #[msg("Verification key hash mismatch - VK doesn't match pool's expected VK")]
+    VerificationKeyHashMismatch,
+
     #[msg("Transfer amount doesn't match declared amount")]
     InvalidTransferAmount,
 
@@ -43,4 +49,16 @@ pub enum PoolError {
 
     #[msg("Insufficient vault balance for withdrawal")]
     InsufficientVaultBalance,
+
+    #[msg("Deposit amount below minimum threshold")]
+    DepositBelowMinimum,
+
+    #[msg("Emergency mode is not active")]
+    EmergencyModeNotActive,
+
+    #[msg("Historical roots PDA not initialized")]
+    HistoricalRootsNotInitialized,
+
+    #[msg("Invalid circuit ID for this operation")]
+    InvalidCircuitId,
 }

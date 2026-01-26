@@ -37,10 +37,36 @@ pub struct EmergencyPauseEvent {
 }
 
 #[event]
+pub struct EmergencyModeEvent {
+    pub pool: Pubkey,
+    pub emergency_mode: bool,
+    pub authority: Pubkey,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct EmergencyWithdrawEvent {
+    pub pool: Pubkey,
+    pub recipient: Pubkey,
+    pub amount: u64,
+    pub timestamp: i64,
+}
+
+#[event]
 pub struct NullifierRecordedEvent {
     pub pool: Pubkey,
     pub nullifier: [u8; 32],
     pub nullifiers_root: [u8; 32],
     pub slot: u64,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct NullifierCleanupEvent {
+    pub pool: Pubkey,
+    pub nullifier: [u8; 32],
+    pub original_slot: u64,
+    pub cleanup_slot: u64,
+    pub rent_recovered: u64,
     pub timestamp: i64,
 }

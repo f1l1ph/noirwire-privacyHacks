@@ -40,6 +40,7 @@ pub struct SettleBatch<'info> {
 
 pub fn handler(ctx: Context<SettleBatch>, proof_data: BatchSettlementProofData) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
+    let current_slot = Clock::get()?.slot;
 
     // Extract values from proof
     let new_root = proof_data.new_root;
@@ -82,8 +83,9 @@ pub fn handler(ctx: Context<SettleBatch>, proof_data: BatchSettlementProofData) 
         .ok_or(PoolError::Overflow)?;
 
     // 4. Update pool state with new root (only after proof verification)
+    // SECURITY (HIGH-01): Pass current slot for root expiration tracking
     let old_root = pool.commitment_root;
-    pool.update_root(new_root);
+    pool.update_root(new_root, current_slot);
 
     // 5. Emit event with nullifiers_root (indexer will process individual nullifiers)
     emit!(BatchSettlementEvent {

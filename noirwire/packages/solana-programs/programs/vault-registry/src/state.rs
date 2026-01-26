@@ -3,6 +3,10 @@ use anchor_lang::prelude::*;
 // Re-export PERMISSION_PROGRAM_ID from SDK
 pub use ephemeral_rollups_sdk::consts::PERMISSION_PROGRAM_ID;
 
+/// Current vault state version for migration support
+/// SECURITY (LOW-03): Versioning for future-proof upgrades
+pub const VAULT_STATE_VERSION: u8 = 2;
+
 /// Permission flags from MagicBlock SDK
 /// These match ephemeral_rollups_sdk::access_control::structs constants
 /// Note: SDK uses u8 for flags field
@@ -26,6 +30,10 @@ pub mod permission_flags {
 #[account]
 #[derive(InitSpace)]
 pub struct Vault {
+    /// Account structure version for migration support
+    /// SECURITY (LOW-03): Versioning for future-proof upgrades
+    pub version: u8,
+
     /// Unique vault identifier
     pub vault_id: [u8; 32],
 

@@ -2,6 +2,7 @@ use crate::errors::PoolError;
 use crate::events::WithdrawEvent;
 use crate::state::*;
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::keccak;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 use zk_verifier::cpi;
 use zk_verifier::cpi::accounts::VerifyProof;
@@ -79,6 +80,7 @@ pub fn handler(
 ) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
     let nullifier = proof_data.nullifier;
+    let current_slot = Clock::get()?.slot;
 
     // SECURITY: Verify recipient matches proof to prevent token diversion
     // Convert recipient from field bytes to Pubkey
@@ -88,16 +90,26 @@ pub fn handler(
     // 1. Extract amount from proof (convert from field back to u64)
     let amount = field_to_u64(&proof_data.amount)?;
 
-    // 2. Validate old_root matches current pool root (must be in historical roots)
+    // 2. SECURITY (HIGH-01): Validate old_root with expiration enforcement
+    // Roots older than MAX_ROOT_AGE_SLOTS (~6 min) are rejected
     require!(
-        pool.is_valid_root(&proof_data.old_root),
-        PoolError::InvalidMerkleRoot
+        pool.is_valid_root_with_expiration(&proof_data.old_root, current_slot),
+        PoolError::MerkleRootExpired
     );
 
-    // 3. Request compute budget for ZK verification (~600k CU)
+    // 3. SECURITY (HIGH-02): Verify VK hash matches pool's expected VK
+    // This prevents VK substitution attacks if admin key is compromised
+    let vk_data = ctx.accounts.verification_key.try_to_vec()?;
+    let vk_hash = keccak::hash(&vk_data);
+    require!(
+        pool.vk_hash == vk_hash.to_bytes(),
+        PoolError::VerificationKeyHashMismatch
+    );
+
+    // 4. Request compute budget for ZK verification (~600k CU)
     msg!("Verifying withdrawal proof (estimated 600k CU)");
 
-    // 4. Verify ZK proof via CPI to zk-verifier program
+    // 5. Verify ZK proof via CPI to zk-verifier program
     let verify_cpi_ctx = CpiContext::new(
         ctx.accounts.verifier_program.to_account_info(),
         VerifyProof {
@@ -110,14 +122,14 @@ pub fn handler(
 
     msg!("ZK proof verified successfully");
 
-    // 5. Record nullifier (account creation proves uniqueness)
+    // 6. Record nullifier (account creation proves uniqueness)
     // This MUST be done after proof verification to prevent double-spend
     let nullifier_entry = &mut ctx.accounts.nullifier_entry;
     nullifier_entry.nullifier = nullifier;
-    nullifier_entry.slot = Clock::get()?.slot;
+    nullifier_entry.slot = current_slot;
     nullifier_entry.bump = ctx.bumps.nullifier_entry;
 
-    // 5.5. SECURITY (CRITICAL-07): Verify pool has sufficient balance before transfer
+    // 7. SECURITY (CRITICAL-07): Verify pool has sufficient balance before transfer
     require!(
         pool.total_shielded >= amount,
         PoolError::InsufficientPoolBalance
@@ -134,7 +146,7 @@ pub fn handler(
         ctx.accounts.pool_vault.amount
     );
 
-    // 6. Transfer tokens from pool to recipient
+    // 8. Transfer tokens from pool to recipient
     let pool_key = pool.key();
     let authority_seeds = &[b"authority", pool_key.as_ref(), &[ctx.bumps.pool_authority]];
     let signer_seeds = &[&authority_seeds[..]];
@@ -150,9 +162,9 @@ pub fn handler(
     );
     token::transfer(transfer_ctx, amount)?;
 
-    // 7. Update pool state with new merkle root from proof
+    // 9. Update pool state with new merkle root from proof
     let new_root = proof_data.new_root;
-    pool.update_root(new_root);
+    pool.update_root(new_root, current_slot);
     pool.total_shielded = pool
         .total_shielded
         .checked_sub(amount)
@@ -168,7 +180,7 @@ pub fn handler(
         .checked_add(1)
         .ok_or(PoolError::Overflow)?;
 
-    // 8. Emit event
+    // 10. Emit event
     emit!(WithdrawEvent {
         pool: pool.key(),
         nullifier,

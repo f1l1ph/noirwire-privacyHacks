@@ -2,6 +2,7 @@ use crate::errors::PoolError;
 use crate::events::DepositEvent;
 use crate::state::*;
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::keccak;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 use zk_verifier::cpi;
 use zk_verifier::cpi::accounts::VerifyProof;
@@ -56,25 +57,42 @@ pub struct Deposit<'info> {
 
 pub fn handler(ctx: Context<Deposit>, amount: u64, proof_data: DepositProofData) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
+    let current_slot = Clock::get()?.slot;
 
-    // 1. Request compute budget for ZK verification (~600k CU)
+    // 1. SECURITY (MEDIUM-04): Enforce minimum deposit to prevent spam
+    // This protects against merkle tree bloating and compute exhaustion attacks
+    require!(
+        amount >= MIN_DEPOSIT_SPL_UNITS,
+        PoolError::DepositBelowMinimum
+    );
+
+    // 2. Request compute budget for ZK verification (~600k CU)
     // This is done implicitly by the syscall, but we can log the estimate
     msg!("Verifying deposit proof (estimated 600k CU)");
 
-    // 2. Verify amount matches proof
+    // 3. Verify amount matches proof
     let proof_amount = u64_to_field(amount);
     require!(
         proof_data.deposit_amount == proof_amount,
         PoolError::InvalidProof
     );
 
-    // 3. Verify old_root matches current pool root
+    // 4. Verify old_root matches current pool root
     require!(
         proof_data.old_root == pool.commitment_root,
         PoolError::InvalidMerkleRoot
     );
 
-    // 4. Verify ZK proof via CPI to zk-verifier program
+    // 5. SECURITY (HIGH-02): Verify VK hash matches pool's expected VK
+    // This prevents VK substitution attacks if admin key is compromised
+    let vk_data = ctx.accounts.verification_key.try_to_vec()?;
+    let vk_hash = keccak::hash(&vk_data);
+    require!(
+        pool.vk_hash == vk_hash.to_bytes(),
+        PoolError::VerificationKeyHashMismatch
+    );
+
+    // 6. Verify ZK proof via CPI to zk-verifier program
     let verify_cpi_ctx = CpiContext::new(
         ctx.accounts.verifier_program.to_account_info(),
         VerifyProof {
@@ -87,7 +105,7 @@ pub fn handler(ctx: Context<Deposit>, amount: u64, proof_data: DepositProofData)
 
     msg!("ZK proof verified successfully");
 
-    // 5. Transfer tokens from user to pool vault
+    // 7. Transfer tokens from user to pool vault
     // SECURITY (CRITICAL-06): Verify actual transfer amount matches declared amount
     let vault_balance_before = ctx.accounts.pool_vault.amount;
 
@@ -117,9 +135,9 @@ pub fn handler(ctx: Context<Deposit>, amount: u64, proof_data: DepositProofData)
 
     msg!("Transfer verified: {} tokens", actual_transferred);
 
-    // 6. Update pool state with new merkle root from proof
+    // 8. Update pool state with new merkle root from proof
     let new_root = proof_data.new_root;
-    pool.update_root(new_root);
+    pool.update_root(new_root, current_slot);
     pool.total_shielded = pool
         .total_shielded
         .checked_add(actual_transferred)
@@ -129,7 +147,7 @@ pub fn handler(ctx: Context<Deposit>, amount: u64, proof_data: DepositProofData)
         .checked_add(1)
         .ok_or(PoolError::Overflow)?;
 
-    // 7. Emit event
+    // 9. Emit event
     emit!(DepositEvent {
         pool: pool.key(),
         commitment: proof_data.new_commitment,

@@ -31,6 +31,10 @@ pub mod vault_registry {
         require!(name.len() <= 32, VaultError::NameTooLong);
 
         let vault = &mut ctx.accounts.vault;
+
+        // SECURITY (LOW-03): Set version for future migration support
+        vault.version = VAULT_STATE_VERSION;
+
         vault.vault_id = vault_id;
         vault.name = name.clone();
         vault.admin = ctx.accounts.admin.key();

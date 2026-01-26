@@ -34,6 +34,8 @@ pub mod shielded_pool {
 
     /// Deposit tokens into the shielded pool (shield)
     /// Requires a valid ZK proof that the commitment is correctly formed
+    /// SECURITY (MEDIUM-04): Enforces minimum deposit amount
+    /// SECURITY (HIGH-02): Validates VK hash
     pub fn deposit(
         ctx: Context<Deposit>,
         amount: u64,
@@ -44,6 +46,8 @@ pub mod shielded_pool {
 
     /// Withdraw tokens from the shielded pool (unshield)
     /// Requires a valid ZK proof of ownership and sufficient balance
+    /// SECURITY (HIGH-01): Enforces root expiration (MAX_ROOT_AGE_SLOTS)
+    /// SECURITY (HIGH-02): Validates VK hash
     pub fn withdraw(
         ctx: Context<Withdraw>,
         proof_data: state::WithdrawProofData,
@@ -73,8 +77,28 @@ pub mod shielded_pool {
         instructions::record_nullifier::handler(ctx, nullifier, nullifiers_root, merkle_proof)
     }
 
+    /// Clean up old nullifier PDAs to recover rent
+    /// SECURITY (LOW-02): Only cleans nullifiers older than MIN_NULLIFIER_AGE_FOR_CLEANUP
+    pub fn cleanup_nullifier(ctx: Context<CleanupNullifier>) -> Result<()> {
+        instructions::cleanup_nullifier::handler(ctx)
+    }
+
     /// Emergency pause (admin only)
     pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()> {
         instructions::set_paused::handler(ctx, paused)
+    }
+
+    /// Enable/disable emergency mode (admin only)
+    /// SECURITY (LOW-01): Emergency withdrawal mechanism
+    /// Pool must be paused before enabling emergency mode
+    pub fn set_emergency_mode(ctx: Context<SetEmergencyMode>, emergency_mode: bool) -> Result<()> {
+        instructions::set_paused::set_emergency_mode_handler(ctx, emergency_mode)
+    }
+
+    /// Emergency withdrawal (bypasses ZK verification)
+    /// SECURITY (LOW-01): Only available when pool is in emergency_mode
+    /// Admin must authorize each withdrawal
+    pub fn emergency_withdraw(ctx: Context<EmergencyWithdraw>, amount: u64) -> Result<()> {
+        instructions::emergency_withdraw::handler(ctx, amount)
     }
 }

@@ -51,6 +51,10 @@ pub fn handler(
     per_authority: Pubkey,
 ) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
+    let current_slot = Clock::get()?.slot;
+
+    // SECURITY (LOW-03): Set version for future migration support
+    pool.version = POOL_STATE_VERSION;
 
     pool.authority = ctx.accounts.authority.key();
     pool.per_authority = per_authority; // CRITICAL-05: PER authority for batch settlement
@@ -58,10 +62,13 @@ pub fn handler(
     pool.token_vault = ctx.accounts.pool_vault.key();
     pool.vk_hash = vk_hash;
     pool.commitment_root = [0u8; 32]; // Empty tree root
+    pool.commitment_root_slot = current_slot; // SECURITY (HIGH-01): Track root slot
     pool.historical_roots = [[0u8; 32]; 32]; // Fixed-size array
+    pool.historical_roots_slots = [0u64; 32]; // SECURITY (HIGH-01): Track historical slots
     pool.roots_index = 0;
     pool.total_shielded = 0;
     pool.paused = false;
+    pool.emergency_mode = false; // SECURITY (LOW-01): Emergency mode starts disabled
     pool.total_deposits = 0;
     pool.total_withdrawals = 0;
     pool.total_nullifiers = 0;
@@ -70,8 +77,10 @@ pub fn handler(
     pool._reserved = Vec::new();
 
     msg!("Pool initialized for mint: {}", token_mint);
+    msg!("Pool version: {}", POOL_STATE_VERSION);
     msg!("PER authority: {}", per_authority);
     msg!("Verification key hash: {:?}", vk_hash);
+    msg!("Initial slot: {}", current_slot);
 
     Ok(())
 }
