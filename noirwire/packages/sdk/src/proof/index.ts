@@ -4,3 +4,4 @@
  */
 
 export * from "./generator";
+export * from "./circuits";
