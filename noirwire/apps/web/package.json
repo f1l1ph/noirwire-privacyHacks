@@ -4,8 +4,8 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "NODE_OPTIONS='--no-warnings' NEXT_DISABLE_TURBOPACK=1 next dev --port 3000",
-    "dev:turbo": "next dev --port 3000",
+    "dev": "NODE_OPTIONS='--no-warnings' NEXT_DISABLE_TURBOPACK=1 next dev --port 3001",
+    "dev:turbo": "next dev --port 3001",
     "build": "NODE_OPTIONS='--no-warnings' next build --webpack",
     "start": "next start",
     "lint": "eslint --max-warnings 0",

@@ -1,0 +1,505 @@
+<!-- 
+NoirWire Color Palette Reference
+This HTML file provides a visual reference of the design system color palette.
+Open in browser to see all colors in both light and dark modes.
+-->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NoirWire Design System - Color Palette</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      :root {
+        --bg-light: #ffffff;
+        --text-light: #111827;
+        --bg-dark: #0f1419;
+        --text-dark: #ffffff;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
+        background: var(--bg-light);
+        color: var(--text-light);
+        padding: 40px 20px;
+        transition:
+          background-color 200ms,
+          color 200ms;
+      }
+
+      body.dark-mode {
+        background: var(--bg-dark);
+        color: var(--text-dark);
+      }
+
+      .header {
+        max-width: 1200px;
+        margin: 0 auto 60px;
+        text-align: center;
+      }
+
+      .header h1 {
+        font-size: 48px;
+        margin-bottom: 10px;
+        background: linear-gradient(135deg, #9333ea 0%, #4f46e5 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      .header p {
+        font-size: 18px;
+        opacity: 0.8;
+      }
+
+      .toggle-btn {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 10px 20px;
+        background: linear-gradient(135deg, #9333ea 0%, #4f46e5 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        transition: transform 200ms;
+        z-index: 1000;
+      }
+
+      .toggle-btn:hover {
+        transform: translateY(-2px);
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+
+      .palette-section {
+        margin-bottom: 80px;
+      }
+
+      .section-title {
+        font-size: 28px;
+        font-weight: 700;
+        margin-bottom: 30px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        opacity: 0.8;
+      }
+
+      .color-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 20px;
+        margin-bottom: 40px;
+      }
+
+      .color-card {
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid #e5e7eb;
+        transition:
+          transform 200ms,
+          box-shadow 200ms;
+        cursor: pointer;
+      }
+
+      body.dark-mode .color-card {
+        border-color: #2d3748;
+      }
+
+      .color-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+      }
+
+      .color-sample {
+        width: 100%;
+        height: 120px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: 600;
+        font-size: 12px;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+      }
+
+      .color-info {
+        padding: 15px;
+        background: #f9fafb;
+        border-top: 1px solid #e5e7eb;
+      }
+
+      body.dark-mode .color-info {
+        background: #1a202c;
+        border-top-color: #2d3748;
+      }
+
+      .color-name {
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 5px;
+      }
+
+      .color-hex {
+        font-size: 12px;
+        font-family: "Monaco", monospace;
+        opacity: 0.7;
+        user-select: all;
+      }
+
+      .use-cases {
+        margin-top: 30px;
+        padding: 20px;
+        background: #f3f4f6;
+        border-radius: 8px;
+        border-left: 4px solid #9333ea;
+      }
+
+      body.dark-mode .use-cases {
+        background: #2d3748;
+        border-left-color: #c084fc;
+      }
+
+      .use-cases h4 {
+        margin-bottom: 10px;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .use-cases p {
+        font-size: 13px;
+        margin: 0;
+        opacity: 0.8;
+      }
+
+      .contrast-demo {
+        margin-top: 40px;
+        padding: 20px;
+        border-radius: 8px;
+        border: 1px solid #d1d5db;
+      }
+
+      body.dark-mode .contrast-demo {
+        border-color: #2d3748;
+      }
+
+      .contrast-demo h4 {
+        margin-bottom: 15px;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .contrast-example {
+        padding: 15px;
+        margin-bottom: 15px;
+        border-radius: 6px;
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      .contrast-pass {
+        color: #15803d;
+        background: #dcfce7;
+      }
+
+      body.dark-mode .contrast-pass {
+        color: #86efac;
+        background: rgba(34, 197, 94, 0.15);
+      }
+
+      .contrast-fail {
+        color: #b91c1c;
+        background: #fee2e2;
+      }
+
+      body.dark-mode .contrast-fail {
+        color: #fca5a5;
+        background: rgba(244, 63, 94, 0.15);
+      }
+
+      footer {
+        text-align: center;
+        padding-top: 40px;
+        margin-top: 60px;
+        border-top: 1px solid #e5e7eb;
+        opacity: 0.7;
+        font-size: 14px;
+      }
+
+      body.dark-mode footer {
+        border-top-color: #2d3748;
+      }
+    </style>
+  </head>
+  <body>
+    <button class="toggle-btn" onclick="toggleDarkMode()">🌙 Dark Mode</button>
+
+    <div class="header">
+      <h1>NoirWire Color Palette</h1>
+      <p>Privacy-Focused Design System for Web3 Applications</p>
+    </div>
+
+    <div class="container">
+      <!-- Primary Palette -->
+      <div class="palette-section">
+        <h2 class="section-title">🔒 Primary - Violet (Trust & Privacy)</h2>
+        <div class="color-grid" id="primary-grid"></div>
+        <div class="use-cases">
+          <h4>Use Cases</h4>
+          <p>
+            Primary buttons, links, active states, and main calls-to-action. Establishes brand
+            identity and conveys trust/privacy.
+          </p>
+        </div>
+      </div>
+
+      <!-- Secondary Palette -->
+      <div class="palette-section">
+        <h2 class="section-title">⚡ Secondary - Indigo (Depth & Intelligence)</h2>
+        <div class="color-grid" id="secondary-grid"></div>
+        <div class="use-cases">
+          <h4>Use Cases</h4>
+          <p>
+            Secondary actions, accents, and supporting UI elements. Adds visual depth while
+            complementing the primary palette.
+          </p>
+        </div>
+      </div>
+
+      <!-- Success Palette -->
+      <div class="palette-section">
+        <h2 class="section-title">✅ Success - Emerald (Verified & Confirmed)</h2>
+        <div class="color-grid" id="success-grid"></div>
+        <div class="use-cases">
+          <h4>Use Cases</h4>
+          <p>
+            Successful transactions, confirmed states, positive feedback, and completion indicators.
+          </p>
+        </div>
+      </div>
+
+      <!-- Warning Palette -->
+      <div class="palette-section">
+        <h2 class="section-title">⚠️ Warning - Amber (Pending & Attention)</h2>
+        <div class="color-grid" id="warning-grid"></div>
+        <div class="use-cases">
+          <h4>Use Cases</h4>
+          <p>Pending transactions, operations requiring attention, and cautionary messages.</p>
+        </div>
+      </div>
+
+      <!-- Danger Palette -->
+      <div class="palette-section">
+        <h2 class="section-title">❌ Danger - Rose (Critical & Errors)</h2>
+        <div class="color-grid" id="danger-grid"></div>
+        <div class="use-cases">
+          <h4>Use Cases</h4>
+          <p>Errors, destructive actions, and critical alerts that demand immediate attention.</p>
+        </div>
+      </div>
+
+      <!-- Info Palette -->
+      <div class="palette-section">
+        <h2 class="section-title">ℹ️ Info - Cyan (Information & Links)</h2>
+        <div class="color-grid" id="info-grid"></div>
+        <div class="use-cases">
+          <h4>Use Cases</h4>
+          <p>Hyperlinks, informational content, metadata, and helpful hints.</p>
+        </div>
+      </div>
+
+      <!-- Neutral Palette -->
+      <div class="palette-section">
+        <h2 class="section-title">⚙️ Neutral - Gray (Text & Backgrounds)</h2>
+        <div class="color-grid" id="neutral-grid"></div>
+        <div class="use-cases">
+          <h4>Use Cases</h4>
+          <p>
+            Text hierarchy, backgrounds, borders, and structural elements. Foundation for all other
+            colors.
+          </p>
+        </div>
+      </div>
+
+      <!-- Contrast Standards -->
+      <div class="palette-section">
+        <h2 class="section-title">♿ Accessibility - Contrast Ratios</h2>
+        <div class="contrast-demo">
+          <h4>WCAG Standards</h4>
+          <div class="contrast-example contrast-pass">
+            ✓ AAA Standard: 7:1 ratio (preferred) - Small text and all graphics
+          </div>
+          <div class="contrast-example contrast-pass">
+            ✓ AA Standard: 4.5:1 ratio (minimum) - Body text
+          </div>
+          <div class="contrast-example contrast-pass">
+            ✓ AA Standard: 3:1 ratio (minimum) - UI components and large text
+          </div>
+          <p style="margin-top: 15px; font-size: 13px; opacity: 0.8">
+            All colors in this palette maintain WCAG AA or higher contrast ratios when used
+            correctly.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      <p>
+        NoirWire Design System v1.0.0 | For questions or improvements, submit feedback through code
+        review
+      </p>
+    </footer>
+
+    <script>
+      // Color palettes
+      const palettes = {
+        primary: {
+          50: "#faf5ff",
+          100: "#f3e8ff",
+          200: "#e9d5ff",
+          300: "#d8b4fe",
+          400: "#c084fc",
+          500: "#a855f7",
+          600: "#9333ea",
+          700: "#7e22ce",
+          800: "#6b21a8",
+          900: "#581c87",
+        },
+        secondary: {
+          50: "#eef2ff",
+          100: "#e0e7ff",
+          200: "#c7d2fe",
+          300: "#a5b4fc",
+          400: "#818cf8",
+          500: "#6366f1",
+          600: "#4f46e5",
+          700: "#4338ca",
+          800: "#3730a3",
+          900: "#312e81",
+        },
+        success: {
+          50: "#f0fdf4",
+          100: "#dcfce7",
+          200: "#bbf7d0",
+          300: "#86efac",
+          400: "#4ade80",
+          500: "#22c55e",
+          600: "#16a34a",
+          700: "#15803d",
+          800: "#166534",
+          900: "#145231",
+        },
+        warning: {
+          50: "#fffbeb",
+          100: "#fef3c7",
+          200: "#fde68a",
+          300: "#fcd34d",
+          400: "#fbbf24",
+          500: "#f59e0b",
+          600: "#d97706",
+          700: "#b45309",
+          800: "#92400e",
+          900: "#78350f",
+        },
+        danger: {
+          50: "#fff5f6",
+          100: "#ffe0e6",
+          200: "#ffc2d1",
+          300: "#ff9fb0",
+          400: "#ff7a93",
+          500: "#f43f5e",
+          600: "#e11d48",
+          700: "#be185d",
+          800: "#9d174d",
+          900: "#831843",
+        },
+        info: {
+          50: "#ecf9ff",
+          100: "#cff2fe",
+          200: "#a5ecfd",
+          300: "#67e8f9",
+          400: "#22d3ee",
+          500: "#06b6d4",
+          600: "#0891b2",
+          700: "#0e7490",
+          800: "#155e75",
+          900: "#164e63",
+        },
+        neutral: {
+          50: "#f9fafb",
+          100: "#f3f4f6",
+          200: "#e5e7eb",
+          300: "#d1d5db",
+          400: "#9ca3af",
+          500: "#6b7280",
+          600: "#4b5563",
+          700: "#374151",
+          800: "#1f2937",
+          900: "#111827",
+        },
+      };
+
+      function createColorCard(name, hex) {
+        return `
+                <div class="color-card" onclick="copyToClipboard('${hex}')">
+                    <div class="color-sample" style="background-color: ${hex}">
+                        ${hex.toUpperCase()}
+                    </div>
+                    <div class="color-info">
+                        <div class="color-name">${name}</div>
+                        <div class="color-hex">${hex}</div>
+                    </div>
+                </div>
+            `;
+      }
+
+      function renderPalette(paletteId, colors) {
+        const grid = document.getElementById(`${paletteId}-grid`);
+        grid.innerHTML = Object.entries(colors)
+          .map(([key, value]) => createColorCard(`${paletteId}-${key}`, value))
+          .join("");
+      }
+
+      function toggleDarkMode() {
+        document.body.classList.toggle("dark-mode");
+        const btn = document.querySelector(".toggle-btn");
+        btn.textContent = document.body.classList.contains("dark-mode")
+          ? "☀️ Light Mode"
+          : "🌙 Dark Mode";
+        localStorage.setItem("darkMode", document.body.classList.contains("dark-mode"));
+      }
+
+      function copyToClipboard(text) {
+        navigator.clipboard.writeText(text).then(() => {
+          const btn = event.target.closest(".color-card");
+          const original = btn.innerHTML;
+          btn.style.opacity = "0.7";
+          setTimeout(() => {
+            btn.style.opacity = "1";
+          }, 200);
+        });
+      }
+
+      // Initialize
+      Object.entries(palettes).forEach(([paletteId, colors]) => {
+        renderPalette(paletteId, colors);
+      });
+
+      // Check for saved dark mode preference
+      if (localStorage.getItem("darkMode") === "true") {
+        toggleDarkMode();
+      }
+    </script>
+  </body>
+</html>

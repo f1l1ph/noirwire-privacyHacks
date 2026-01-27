@@ -77,15 +77,16 @@ export function WithdrawForm() {
 
     try {
       const signature = await withdraw(amountLamports, recipientPubkey);
-      setWithdrawStatus(`✅ Withdrawal successful! Tx: ${signature.substring(0, 16)}...`);
+      setWithdrawStatus(`Withdrawal successful! Tx: ${signature.substring(0, 16)}...`);
       setAmount("");
       setRecipient("");
 
       // Refresh balance
       await loadBalance();
+      setTimeout(() => setWithdrawStatus(""), 8000);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
-      setWithdrawStatus(`❌ Withdrawal failed: ${errorMessage}`);
+      setWithdrawStatus(`Withdrawal failed: ${errorMessage}`);
     } finally {
       setWithdrawLoading(false);
     }
@@ -100,8 +101,29 @@ export function WithdrawForm() {
   if (!isConnected) {
     return (
       <div className="card">
-        <h2>Withdraw</h2>
-        <p>Please connect your wallet to make withdrawals</p>
+        <div className="card-header">
+          <h2 className="card-title">
+            <span aria-hidden="true">🔓</span> Withdraw
+          </h2>
+        </div>
+        <div className="card-content">
+          <div className="alert alert-info">
+            <svg
+              className="alert-icon"
+              width="20"
+              height="20"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fillRule="evenodd"
+                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span>Please connect your wallet to make withdrawals</span>
+          </div>
+        </div>
       </div>
     );
   }
@@ -109,237 +131,278 @@ export function WithdrawForm() {
   if (!noirWallet) {
     return (
       <div className="card">
-        <h2>Withdraw (Unshield)</h2>
-        <p>Please create a NoirWire wallet first to make withdrawals</p>
+        <div className="card-header">
+          <h2 className="card-title">
+            <span aria-hidden="true">🔓</span> Withdraw (Unshield)
+          </h2>
+        </div>
+        <div className="card-content">
+          <div className="alert alert-warning">
+            <svg
+              className="alert-icon"
+              width="20"
+              height="20"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fillRule="evenodd"
+                d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span>Please create a NoirWire wallet first to make withdrawals</span>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="card">
-      <h2>Withdraw (Unshield)</h2>
-
-      <div className="balance-section">
-        <div className="balance-info">
-          <span className="balance-label">Private Balance:</span>
-          {balanceLoading ? (
-            <span className="balance-value">Loading...</span>
-          ) : balance !== null ? (
-            <span className="balance-value">{(Number(balance) / 1e9).toFixed(4)} SOL</span>
-          ) : (
-            <span className="balance-value">—</span>
-          )}
-        </div>
-        <button onClick={loadBalance} disabled={balanceLoading} className="btn-secondary">
-          Refresh
-        </button>
+      <div className="card-header">
+        <h2 className="card-title">
+          <span aria-hidden="true">🔓</span> Withdraw (Unshield)
+        </h2>
+        <p className="card-subtitle">Move funds from your private balance</p>
       </div>
 
-      <form onSubmit={handleWithdraw} className="form">
-        <div className="form-group">
-          <label htmlFor="withdraw-amount">Amount (SOL)</label>
-          <input
-            id="withdraw-amount"
-            type="number"
-            step="0.001"
-            min="0"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="0.1"
-            disabled={withdrawLoading}
-            className="input"
-          />
+      <div className="card-content">
+        <div className="balance-display">
+          <div className="balance-info">
+            <div className="balance-label">Private Balance</div>
+            <div className="balance-value">
+              {balanceLoading ? (
+                <span className="loading-spinner" />
+              ) : balance !== null ? (
+                <>{(Number(balance) / 1e9).toFixed(4)} SOL</>
+              ) : (
+                "—"
+              )}
+            </div>
+          </div>
+          <button
+            onClick={loadBalance}
+            disabled={balanceLoading}
+            className="btn btn-icon btn-secondary"
+            aria-label="Refresh balance"
+            title="Refresh balance"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              className={balanceLoading ? "animate-spin" : ""}
+            >
+              <path
+                fillRule="evenodd"
+                d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </button>
         </div>
 
-        <div className="form-group">
-          <label htmlFor="recipient">Recipient Address</label>
-          <div className="input-with-button">
+        <form onSubmit={handleWithdraw} className="form">
+          <div className="form-group">
+            <label htmlFor="withdraw-amount" className="form-label">
+              Amount (SOL)
+            </label>
             <input
-              id="recipient"
-              type="text"
-              value={recipient}
-              onChange={(e) => setRecipient(e.target.value)}
-              placeholder="Solana address"
+              id="withdraw-amount"
+              type="number"
+              step="0.001"
+              min="0"
+              max={balance !== null ? (Number(balance) / 1e9).toString() : undefined}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.1"
               disabled={withdrawLoading}
               className="input"
+              aria-describedby="withdraw-hint"
             />
-            <button
-              type="button"
-              onClick={fillMyAddress}
-              className="btn-secondary small"
-              disabled={withdrawLoading || !publicKey}
-            >
-              My Address
-            </button>
+            <span id="withdraw-hint" className="form-hint">
+              Available: {balance !== null ? (Number(balance) / 1e9).toFixed(4) : "0"} SOL
+            </span>
           </div>
-        </div>
 
-        <button
-          type="submit"
-          disabled={withdrawLoading || !amount || !recipient}
-          className="btn-primary"
-        >
-          {withdrawLoading ? "Generating Proof..." : "Withdraw"}
-        </button>
-      </form>
+          <div className="form-group">
+            <label htmlFor="recipient" className="form-label">
+              Recipient Address
+            </label>
+            <div className="input-group">
+              <input
+                id="recipient"
+                type="text"
+                value={recipient}
+                onChange={(e) => setRecipient(e.target.value)}
+                placeholder="Solana address"
+                disabled={withdrawLoading}
+                className="input input-group-input"
+              />
+              <button
+                type="button"
+                onClick={fillMyAddress}
+                className="btn btn-sm btn-secondary"
+                disabled={withdrawLoading || !publicKey}
+                title="Use my wallet address"
+              >
+                My Address
+              </button>
+            </div>
+          </div>
 
-      {withdrawStatus && (
-        <div
-          className={`status ${withdrawStatus.includes("✅") ? "success" : withdrawStatus.includes("❌") ? "error" : "info"}`}
-        >
-          {withdrawStatus}
-        </div>
-      )}
+          <button
+            type="submit"
+            disabled={withdrawLoading || !amount || !recipient}
+            className="btn btn-base btn-primary"
+          >
+            {withdrawLoading ? (
+              <>
+                <span className="loading-spinner" />
+                Generating Proof...
+              </>
+            ) : (
+              <>
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2H7V7a3 3 0 015.905-.75 1 1 0 001.937-.5A5.002 5.002 0 0010 2z" />
+                </svg>
+                Withdraw & Unshield
+              </>
+            )}
+          </button>
+        </form>
 
-      {error && <div className="status error">{error}</div>}
+        {withdrawStatus && (
+          <div
+            className={`alert ${
+              withdrawStatus.includes("successful")
+                ? "alert-success"
+                : withdrawStatus.includes("failed") || withdrawStatus.includes("Invalid")
+                  ? "alert-danger"
+                  : "alert-info"
+            }`}
+          >
+            <svg
+              className="alert-icon"
+              width="20"
+              height="20"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              {withdrawStatus.includes("successful") ? (
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                  clipRule="evenodd"
+                />
+              ) : withdrawStatus.includes("failed") || withdrawStatus.includes("Invalid") ? (
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                  clipRule="evenodd"
+                />
+              ) : (
+                <path
+                  fillRule="evenodd"
+                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                  clipRule="evenodd"
+                />
+              )}
+            </svg>
+            <span>{withdrawStatus}</span>
+          </div>
+        )}
+
+        {error && (
+          <div className="alert alert-danger">
+            <svg
+              className="alert-icon"
+              width="20"
+              height="20"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span>{error}</span>
+          </div>
+        )}
+      </div>
 
       <style jsx>{`
-        .card {
-          background: #1a1a1a;
-          border: 1px solid #333;
-          border-radius: 12px;
-          padding: 24px;
-          margin-bottom: 24px;
-        }
-
-        h2 {
-          margin: 0 0 16px 0;
-          font-size: 24px;
-          color: #fff;
-        }
-
-        .balance-section {
+        .balance-display {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 16px;
-          background: #252525;
-          border-radius: 8px;
-          margin-bottom: 16px;
+          padding: var(--space-6);
+          background: linear-gradient(
+            135deg,
+            var(--color-primary-900) 0%,
+            var(--color-secondary-900) 100%
+          );
+          border-radius: var(--radius-lg);
+          border: 1px solid var(--color-primary-700);
+          margin-bottom: var(--space-4);
+        }
+
+        @media (prefers-color-scheme: light) {
+          .balance-display {
+            background: linear-gradient(
+              135deg,
+              var(--color-primary-50) 0%,
+              var(--color-secondary-50) 100%
+            );
+            border-color: var(--color-primary-200);
+          }
         }
 
         .balance-info {
           display: flex;
           flex-direction: column;
-          gap: 4px;
+          gap: var(--space-2);
         }
 
         .balance-label {
-          font-size: 14px;
-          color: #aaa;
+          font-size: var(--font-size-sm);
+          font-weight: var(--font-weight-medium);
+          color: var(--text-secondary);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
         }
 
         .balance-value {
-          font-size: 24px;
-          font-weight: 700;
-          color: #fff;
-        }
-
-        .form {
+          font-size: var(--font-size-3xl);
+          font-weight: var(--font-weight-bold);
+          color: var(--text-primary);
           display: flex;
-          flex-direction: column;
-          gap: 16px;
+          align-items: center;
+          gap: var(--space-2);
         }
 
-        .form-group {
+        .input-group {
           display: flex;
-          flex-direction: column;
-          gap: 8px;
+          gap: var(--space-2);
+          align-items: stretch;
         }
 
-        label {
-          font-size: 14px;
-          font-weight: 500;
-          color: #ddd;
-        }
-
-        .input-with-button {
-          display: flex;
-          gap: 8px;
-        }
-
-        .input {
+        .input-group-input {
           flex: 1;
-          padding: 12px;
-          border: 1px solid #333;
-          border-radius: 8px;
-          background: #252525;
-          color: #fff;
-          font-size: 16px;
         }
 
-        .input:focus {
-          outline: none;
-          border-color: #512da8;
+        .alert-icon {
+          flex-shrink: 0;
+          width: 20px;
+          height: 20px;
         }
 
-        .btn-primary {
-          padding: 12px 24px;
-          background: #512da8;
-          color: white;
-          border: none;
-          border-radius: 8px;
-          font-size: 16px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: background 0.2s;
-        }
-
-        .btn-primary:hover:not(:disabled) {
-          background: #6a3cc7;
-        }
-
-        .btn-primary:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        .btn-secondary {
-          padding: 8px 16px;
-          background: #333;
-          color: white;
-          border: none;
-          border-radius: 8px;
-          font-size: 14px;
-          font-weight: 500;
-          cursor: pointer;
-          transition: background 0.2s;
-        }
-
-        .btn-secondary:hover:not(:disabled) {
-          background: #444;
-        }
-
-        .btn-secondary:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        .btn-secondary.small {
-          padding: 8px 12px;
-          font-size: 13px;
-        }
-
-        .status {
-          margin-top: 16px;
-          padding: 12px;
-          border-radius: 8px;
-          font-size: 14px;
-        }
-
-        .status.success {
-          background: #1a4d2e;
-          color: #4ade80;
-        }
-
-        .status.error {
-          background: #4d1a1a;
-          color: #f87171;
-        }
-
-        .status.info {
-          background: #1a3a4d;
-          color: #60a5fa;
+        svg {
+          flex-shrink: 0;
         }
       `}</style>
     </div>

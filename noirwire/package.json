@@ -8,7 +8,11 @@
   ],
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev",
+    "dev": "concurrently -n 'indexer,web' -c 'green,cyan' 'yarn dev:indexer' 'yarn dev:web'",
+    "dev:validator": "cd packages/solana-programs && solana-test-validator --reset",
+    "dev:api": "cd apps/api && yarn dev",
+    "dev:indexer": "cd apps/indexer && yarn dev",
+    "dev:web": "cd apps/web && yarn dev",
     "lint": "turbo run lint",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
@@ -23,9 +27,10 @@
     "format:check:noir": "cd packages/noir-circuits && PATH=\"$HOME/.nargo/bin:$PATH\" nargo fmt --check"
   },
   "devDependencies": {
-    "turbo": "^2.7.5",
-    "prettier": "^3.7.4",
+    "concurrently": "^9.2.1",
     "eslint": "^8.57.0",
+    "prettier": "^3.7.4",
+    "turbo": "^2.7.5",
     "typescript": "^5.9.2"
   },
   "engines": {
