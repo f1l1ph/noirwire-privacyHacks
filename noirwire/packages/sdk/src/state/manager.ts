@@ -3,8 +3,11 @@
  * Tracks user commitments, nullifier secrets, and Merkle tree state
  */
 
-import { MerkleTree, createMerkleTree } from "../crypto/merkle";
+import { MerkleTree, createMerkleTree, TREE_DEPTH } from "../crypto/merkle";
 import { computeCommitment, Balance } from "../crypto/poseidon2";
+
+// Re-export TREE_DEPTH for use by client
+export { TREE_DEPTH };
 
 /**
  * Commitment metadata stored locally
@@ -35,7 +38,7 @@ export class StateManager {
   /**
    * Initialize the state manager with a Merkle tree
    */
-  async init(treeDepth: number = 20): Promise<void> {
+  async init(treeDepth: number = TREE_DEPTH): Promise<void> {
     this.tree = await createMerkleTree(treeDepth);
   }
 
@@ -237,7 +240,7 @@ export class StateManager {
 /**
  * Create and initialize a state manager
  */
-export async function createStateManager(treeDepth: number = 20): Promise<StateManager> {
+export async function createStateManager(treeDepth: number = TREE_DEPTH): Promise<StateManager> {
   const manager = new StateManager();
   await manager.init(treeDepth);
   return manager;

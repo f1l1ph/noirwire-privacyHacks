@@ -171,7 +171,7 @@ describe("E2E with Real ZK Proofs", function () {
     console.log("Setting up E2E test environment...");
 
     // Initialize merkle tree
-    merkleTree = await createMerkleTree(20); // Use TREE_DEPTH=20 for production
+    merkleTree = await createMerkleTree(24); // Use TREE_DEPTH=24 for production (16M capacity)
 
     // Generate user keys
     userSecretKey = BigInt(

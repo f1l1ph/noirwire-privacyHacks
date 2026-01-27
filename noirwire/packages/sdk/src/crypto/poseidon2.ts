@@ -23,16 +23,6 @@ async function getBarretenberg(): Promise<any> {
 }
 
 /**
- * Get the Fr class from Barretenberg (lazy loaded)
- */
-async function getFr(): Promise<any> {
-  if (!barretenbergModule) {
-    barretenbergModule = await import("@aztec/bb.js");
-  }
-  return barretenbergModule.Fr;
-}
-
-/**
  * Domain separator for commitments (matches Noir: COMMITMENT_DOMAIN = 0x01)
  */
 export const COMMITMENT_DOMAIN = 1n;
@@ -48,11 +38,14 @@ export const NULLIFIER_DOMAIN = 2n;
  */
 export async function poseidon2Hash(inputs: bigint[]): Promise<bigint> {
   const bb = await getBarretenberg();
-  const Fr = await getFr();
-  const frInputs = inputs.map((i) => new Fr(i));
-  const result = await bb.poseidon2Hash(frInputs);
-  // Fr has toString() method, convert via hex
-  return BigInt(result.toString());
+  // Convert bigints to Buffer (32 bytes each, big endian)
+  const buffers = inputs.map((i) => {
+    const hex = i.toString(16).padStart(64, "0");
+    return Buffer.from(hex, "hex");
+  });
+  const result = await bb.poseidon2Hash(buffers);
+  // Result is a Buffer, convert to bigint
+  return BigInt("0x" + result.toString("hex"));
 }
 
 /**

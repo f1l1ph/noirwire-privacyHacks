@@ -21,7 +21,12 @@ import {
 import { ProofGenerator, type DepositWitness, type WithdrawWitness } from "./proof/generator";
 import { CircuitRegistry } from "./proof/circuits";
 import { SolanaClient, type DepositProofData, type WithdrawProofData } from "./solana/client";
-import { StateManager, createStateManager, type CommitmentRecord } from "./state/manager";
+import {
+  StateManager,
+  createStateManager,
+  TREE_DEPTH,
+  type CommitmentRecord,
+} from "./state/manager";
 
 // Re-export all modules
 export * from "./crypto";
@@ -234,7 +239,7 @@ export class NoirWireClient {
 
     // Initialize state manager
     if (!this.stateManager) {
-      this.stateManager = await createStateManager(20); // Tree depth 20 for production
+      this.stateManager = await createStateManager(TREE_DEPTH); // Match Noir circuit TREE_DEPTH=24
     }
 
     // TODO: Sync state from on-chain events

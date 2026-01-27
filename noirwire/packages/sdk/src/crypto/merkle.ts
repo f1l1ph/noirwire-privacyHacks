@@ -8,9 +8,9 @@ import { poseidon2HashPair } from "./poseidon2";
 /**
  * Tree depth - must match Noir circuit (TREE_DEPTH in primitives/merkle.nr)
  * Test: 3 (supports 8 leaves)
- * Production: 20 (supports 1,048,576 leaves) or 24 (supports 16,777,216 leaves)
+ * Production: 24 (supports 16,777,216 leaves)
  */
-export const TREE_DEPTH = 20;
+export const TREE_DEPTH = 24;
 
 /**
  * Zero value for empty leaves

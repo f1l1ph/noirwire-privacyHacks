@@ -1377,7 +1377,7 @@
   resolved "https://registry.yarnpkg.com/@noir-lang/acvm_js/-/acvm_js-0.51.0.tgz#0519b9581f78a37d9a12c85599c853c805716bca"
   integrity sha512-yz57N4g27Vm4qdVpaMDIlTdBff4dAGrH7+GD5+QMr84CTeDgx0WQKfK0BYuZLnfesnFqLA/sFvR+eHJUp8n+hQ==
 
-"@noir-lang/backend_barretenberg@0.35.0":
+"@noir-lang/backend_barretenberg@0.35.0", "@noir-lang/backend_barretenberg@^0.35.0":
   version "0.35.0"
   resolved "https://registry.yarnpkg.com/@noir-lang/backend_barretenberg/-/backend_barretenberg-0.35.0.tgz#7845a61fb6c0fae988e4c584aed769ecd24188f1"
   integrity sha512-cKTM2PJRc1RRtbHhza9ZRPVSbIh2G5kt3vXJn20qKoaROebE6rI0rLWB/6YmmWyMk03aZbVx7t7wI1IBY5kqUg==
@@ -1386,7 +1386,7 @@
     "@noir-lang/types" "0.35.0"
     fflate "^0.8.0"
 
-"@noir-lang/noir_js@0.35.0":
+"@noir-lang/noir_js@^0.35.0":
   version "0.35.0"
   resolved "https://registry.yarnpkg.com/@noir-lang/noir_js/-/noir_js-0.35.0.tgz#60ff5402ba1eaa3ec617f32143bc65c7b02a5a9a"
   integrity sha512-7yj0yURWCMX5ohZhaQup+qOyvzcwTsmOaUVuy4xYXnt4rGSYKKTR9HOFuAPAoNq1RiFdZcCGJxOAhQkG5I/9aw==
