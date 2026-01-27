@@ -143,6 +143,7 @@ export function bigintToBytes32(value: bigint): Uint8Array {
 
 /**
  * Convert 32-byte array to bigint (big-endian)
+ * Automatically reduces modulo BN254 field to ensure valid field element
  */
 export function bytes32ToBigint(bytes: Uint8Array): bigint {
   if (bytes.length !== 32) {
@@ -152,23 +153,42 @@ export function bytes32ToBigint(bytes: Uint8Array): bigint {
   for (const byte of bytes) {
     hex += byte.toString(16).padStart(2, "0");
   }
-  return BigInt(hex);
+  const value = BigInt(hex);
+  // Reduce modulo field modulus to ensure it's a valid field element
+  return value % BN254_FIELD_MODULUS;
 }
 
 /**
- * Generate random blinding factor (256-bit)
+ * BN254 field modulus (the prime used by the BN254 curve)
+ * All field elements must be less than this value
  */
-export function generateBlinding(): bigint {
+export const BN254_FIELD_MODULUS =
+  0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001n;
+
+/**
+ * Generate random field element (properly reduced modulo BN254 field)
+ * This ensures the value is always valid for Noir circuits
+ */
+export function generateFieldElement(): bigint {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
-  return bytes32ToBigint(bytes);
+  const randomBigint = bytes32ToBigint(bytes);
+  // Reduce modulo field modulus to ensure it's a valid field element
+  return randomBigint % BN254_FIELD_MODULUS;
 }
 
 /**
- * Generate random nullifier secret (256-bit)
+ * Generate random blinding factor (field element)
+ */
+export function generateBlinding(): bigint {
+  return generateFieldElement();
+}
+
+/**
+ * Generate random nullifier secret (field element)
  */
 export function generateNullifierSecret(): bigint {
-  return generateBlinding();
+  return generateFieldElement();
 }
 
 /**
