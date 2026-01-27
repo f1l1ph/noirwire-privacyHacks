@@ -1,13 +1,9 @@
-import { Module, OnModuleInit } from "@nestjs/common";
+import { Module } from "@nestjs/common";
 import { SolanaListenerService } from "./solana-listener.service";
+import { DatabaseModule } from "../database/database.module";
 
 @Module({
+  imports: [DatabaseModule],
   providers: [SolanaListenerService],
 })
-export class SolanaListenerModule implements OnModuleInit {
-  constructor(private readonly solanaListener: SolanaListenerService) {}
-
-  onModuleInit() {
-    this.solanaListener.startListening();
-  }
-}
+export class SolanaListenerModule {}

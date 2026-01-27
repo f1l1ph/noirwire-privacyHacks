@@ -1,90 +1,185 @@
-import Image, { type ImageProps } from "next/image";
-import { Button } from "@noirwire/ui/button";
-import styles from "./page.module.css";
+"use client";
 
-type Props = Omit<ImageProps, "src"> & {
-  srcLight: string;
-  srcDark: string;
-};
-
-const ThemeImage = (props: Props) => {
-  const { srcLight, srcDark, ...rest } = props;
-
-  return (
-    <>
-      <Image {...rest} src={srcLight} className="imgLight" />
-      <Image {...rest} src={srcDark} className="imgDark" />
-    </>
-  );
-};
+import { WalletButton } from "../components/WalletButton";
+import { DepositForm } from "../components/DepositForm";
+import { WithdrawForm } from "../components/WithdrawForm";
+import { TransactionHistory } from "../components/TransactionHistory";
 
 export default function Home() {
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <ThemeImage
-          className={styles.logo}
-          srcLight="turborepo-dark.svg"
-          srcDark="turborepo-light.svg"
-          alt="Turborepo logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol>
-          <li>
-            Get started by editing <code>apps/web/app/page.tsx</code>
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
-
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new/clone?demo-description=Learn+to+implement+a+monorepo+with+a+two+Next.js+sites+that+has+installed+three+local+packages.&demo-image=%2F%2Fimages.ctfassets.net%2Fe5382hct74si%2F4K8ZISWAzJ8X1504ca0zmC%2F0b21a1c6246add355e55816278ef54bc%2FBasic.png&demo-title=Monorepo+with+Turborepo&demo-url=https%3A%2F%2Fexamples-basic-web.vercel.sh%2F&from=templates&project-name=Monorepo+with+Turborepo&repository-name=monorepo-turborepo&repository-url=https%3A%2F%2Fgithub.com%2Fvercel%2Fturborepo%2Ftree%2Fmain%2Fexamples%2Fbasic&root-directory=apps%2Fdocs&skippable-integrations=1&teamSlug=vercel&utm_source=create-turbo"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            href="https://turborepo.dev/docs?utm_source"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={styles.secondary}
-          >
-            Read our docs
-          </a>
+    <div className="container">
+      <header className="header">
+        <div className="header-content">
+          <div className="logo-section">
+            <h1 className="title">NoirWire</h1>
+            <p className="subtitle">Private Payments on Solana</p>
+          </div>
+          <WalletButton />
         </div>
-        <Button appName="web" className={styles.secondary}>
-          Open alert
-        </Button>
+      </header>
+
+      <main className="main">
+        <div className="hero">
+          <h2 className="hero-title">Privacy-Preserving Payments</h2>
+          <p className="hero-description">
+            Deposit tokens into the shielded pool and withdraw privately using zero-knowledge
+            proofs. Your balance and transaction history remain confidential.
+          </p>
+        </div>
+
+        <div className="grid">
+          <div className="column">
+            <DepositForm />
+            <WithdrawForm />
+          </div>
+          <div className="column">
+            <TransactionHistory />
+          </div>
+        </div>
       </main>
-      <footer className={styles.footer}>
-        <a
-          href="https://vercel.com/templates?search=turborepo&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image aria-hidden src="/window.svg" alt="Window icon" width={16} height={16} />
-          Examples
-        </a>
-        <a
-          href="https://turborepo.dev?utm_source=create-turbo"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image aria-hidden src="/globe.svg" alt="Globe icon" width={16} height={16} />
-          Go to turborepo.dev →
-        </a>
+
+      <footer className="footer">
+        <p>
+          Built with{" "}
+          <a href="https://github.com/noir-lang/noir" target="_blank" rel="noopener noreferrer">
+            Noir
+          </a>{" "}
+          and{" "}
+          <a href="https://magicblock.gg" target="_blank" rel="noopener noreferrer">
+            MagicBlock PER
+          </a>
+        </p>
       </footer>
+
+      <style jsx>{`
+        .container {
+          min-height: 100vh;
+          display: flex;
+          flex-direction: column;
+          background: #0a0a0a;
+          color: #fff;
+        }
+
+        .header {
+          border-bottom: 1px solid #333;
+          background: #0f0f0f;
+        }
+
+        .header-content {
+          max-width: 1200px;
+          margin: 0 auto;
+          padding: 24px 32px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+
+        .logo-section {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .title {
+          margin: 0;
+          font-size: 32px;
+          font-weight: 700;
+          background: linear-gradient(135deg, #512da8 0%, #6a3cc7 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
+
+        .subtitle {
+          margin: 0;
+          font-size: 14px;
+          color: #aaa;
+        }
+
+        .main {
+          flex: 1;
+          max-width: 1200px;
+          margin: 0 auto;
+          padding: 48px 32px;
+          width: 100%;
+        }
+
+        .hero {
+          text-align: center;
+          margin-bottom: 48px;
+        }
+
+        .hero-title {
+          margin: 0 0 16px 0;
+          font-size: 48px;
+          font-weight: 700;
+          background: linear-gradient(135deg, #fff 0%, #aaa 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
+
+        .hero-description {
+          margin: 0 auto;
+          max-width: 600px;
+          font-size: 18px;
+          line-height: 1.6;
+          color: #aaa;
+        }
+
+        .grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 32px;
+        }
+
+        @media (max-width: 768px) {
+          .grid {
+            grid-template-columns: 1fr;
+          }
+
+          .header-content {
+            flex-direction: column;
+            gap: 16px;
+          }
+
+          .hero-title {
+            font-size: 32px;
+          }
+
+          .hero-description {
+            font-size: 16px;
+          }
+        }
+
+        .column {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .footer {
+          border-top: 1px solid #333;
+          padding: 24px 32px;
+          text-align: center;
+          background: #0f0f0f;
+        }
+
+        .footer p {
+          margin: 0;
+          font-size: 14px;
+          color: #aaa;
+        }
+
+        .footer a {
+          color: #512da8;
+          text-decoration: none;
+          font-weight: 500;
+        }
+
+        .footer a:hover {
+          text-decoration: underline;
+        }
+      `}</style>
     </div>
   );
 }

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "env": ["SOLANA_RPC_URL", "SOLANA_WS_URL", "SUPABASE_URL", "SUPABASE_ANON_KEY"],
+      "outputs": ["dist/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true,
+      "env": ["SOLANA_RPC_URL", "SOLANA_WS_URL", "SUPABASE_URL", "SUPABASE_ANON_KEY"]
+    },
+    "lint": {
+      "env": ["SOLANA_RPC_URL", "SOLANA_WS_URL", "SUPABASE_URL", "SUPABASE_ANON_KEY"]
+    }
+  }
+}
