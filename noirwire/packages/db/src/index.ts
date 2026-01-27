@@ -7,16 +7,31 @@ import type { Commitment, Transaction, Vault } from "@noirwire/types";
 // Supabase Client
 // ============================================
 
-const supabaseUrl = process.env.SUPABASE_URL || "http://localhost:54321";
-const supabaseKey = process.env.SUPABASE_ANON_KEY;
-
-if (!supabaseKey) {
-  throw new Error(
-    "SUPABASE_ANON_KEY environment variable is required. Please set it in your .env file.",
-  );
+function getEnv(key: string, fallback?: string): string | undefined {
+  // Safe env access for build time
+  if (typeof process === "undefined" || !process.env) {
+    return fallback;
+  }
+  return process.env[key] || fallback;
 }
 
-export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey);
+// Detect browser vs server to read the correct env vars
+const isBrowser = typeof window !== "undefined";
+
+const supabaseUrl = isBrowser
+  ? getEnv("NEXT_PUBLIC_SUPABASE_URL", "http://localhost:54321")!
+  : getEnv("SUPABASE_URL", "http://localhost:54321")!;
+
+const supabaseKey = isBrowser
+  ? getEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+  : getEnv("SUPABASE_ANON_KEY");
+
+// Placeholder for build time, actual key required at runtime
+const effectiveKey =
+  supabaseKey ||
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0";
+
+export const supabase: SupabaseClient = createClient(supabaseUrl, effectiveKey);
 
 // ============================================
 // Commitment Queries

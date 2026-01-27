@@ -3,8 +3,8 @@
  * Generates Groth16 proofs for deposit, withdraw, and transfer operations
  */
 
-import { Noir } from "@noir-lang/noir_js";
-import { BarretenbergBackend, type CompiledCircuit } from "@noir-lang/backend_barretenberg";
+// Lazy imports to avoid loading WASM during module initialization
+import type { CompiledCircuit } from "@noir-lang/backend_barretenberg";
 import { MerkleProof, proofToNoirFormat } from "../crypto/merkle";
 import { Balance, bigintToBytes32 } from "../crypto/poseidon2";
 
@@ -110,23 +110,33 @@ export interface TransferWitness {
  * Manages circuit compilation and proof generation
  */
 export class ProofGenerator {
-  private backend: BarretenbergBackend | null = null;
-  private noir: Noir | null = null;
+  private backend: any = null;
+  private noir: any = null;
   private circuit: CompiledCircuit;
+  private noirModule: any = null;
+  private backendModule: any = null;
 
   constructor(circuit: CompiledCircuit) {
     this.circuit = circuit;
   }
 
   /**
-   * Initialize the prover (lazy initialization)
+   * Initialize the prover (lazy initialization with dynamic imports)
    */
-  private async init(): Promise<{ noir: Noir; backend: BarretenbergBackend }> {
+  private async init(): Promise<{ noir: any; backend: any }> {
     if (!this.backend) {
-      this.backend = new BarretenbergBackend(this.circuit);
+      // Lazy load backend module
+      if (!this.backendModule) {
+        this.backendModule = await import("@noir-lang/backend_barretenberg");
+      }
+      this.backend = new this.backendModule.BarretenbergBackend(this.circuit);
     }
     if (!this.noir) {
-      this.noir = new Noir(this.circuit);
+      // Lazy load Noir module
+      if (!this.noirModule) {
+        this.noirModule = await import("@noir-lang/noir_js");
+      }
+      this.noir = new this.noirModule.Noir(this.circuit);
     }
     return { noir: this.noir, backend: this.backend };
   }

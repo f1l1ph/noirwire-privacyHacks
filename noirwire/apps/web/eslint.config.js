@@ -8,4 +8,12 @@ export default [
       "react/no-unknown-property": ["error", { ignore: ["jsx", "global"] }],
     },
   },
+  {
+    files: ["polyfills.js"],
+    languageOptions: {
+      globals: {
+        window: "readonly",
+      },
+    },
+  },
 ];

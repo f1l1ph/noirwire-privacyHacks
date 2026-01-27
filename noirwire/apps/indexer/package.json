@@ -19,6 +19,7 @@
     "@noirwire/db": "*",
     "@solana/web3.js": "^1.98.4",
     "@coral-xyz/anchor": "^0.32.1",
+    "dotenv": "^16.4.5",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.1"
   },

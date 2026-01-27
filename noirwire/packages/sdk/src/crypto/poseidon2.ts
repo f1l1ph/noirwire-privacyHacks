@@ -3,18 +3,33 @@
  * Matches the Noir circuit implementation for cross-compatibility
  */
 
-import { Barretenberg, Fr } from "@aztec/bb.js";
-
-let barretenbergInstance: Barretenberg | null = null;
+// Lazy import to avoid loading WASM files during module initialization
+let barretenbergModule: any = null;
+let barretenbergInstance: any = null;
 
 /**
  * Get or initialize Barretenberg instance (singleton pattern)
+ * Lazy loads the module and WASM to avoid blocking app startup
  */
-async function getBarretenberg(): Promise<Barretenberg> {
+async function getBarretenberg(): Promise<any> {
   if (!barretenbergInstance) {
-    barretenbergInstance = await Barretenberg.new();
+    // Dynamically import only when first needed
+    if (!barretenbergModule) {
+      barretenbergModule = await import("@aztec/bb.js");
+    }
+    barretenbergInstance = await barretenbergModule.Barretenberg.new();
   }
   return barretenbergInstance;
+}
+
+/**
+ * Get the Fr class from Barretenberg (lazy loaded)
+ */
+async function getFr(): Promise<any> {
+  if (!barretenbergModule) {
+    barretenbergModule = await import("@aztec/bb.js");
+  }
+  return barretenbergModule.Fr;
 }
 
 /**
@@ -33,6 +48,7 @@ export const NULLIFIER_DOMAIN = 2n;
  */
 export async function poseidon2Hash(inputs: bigint[]): Promise<bigint> {
   const bb = await getBarretenberg();
+  const Fr = await getFr();
   const frInputs = inputs.map((i) => new Fr(i));
   const result = await bb.poseidon2Hash(frInputs);
   // Fr has toString() method, convert via hex

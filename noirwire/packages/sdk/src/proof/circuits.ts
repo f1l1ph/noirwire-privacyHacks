@@ -7,14 +7,27 @@ import type { CompiledCircuit } from "@noir-lang/backend_barretenberg";
 
 // Import compiled circuits from noir-circuits package
 // These are the JSON artifacts produced by `nargo compile`
-import depositCircuit from "../../../noir-circuits/target/deposit.json";
-import withdrawCircuit from "../../../noir-circuits/target/withdraw.json";
-import transferCircuit from "../../../noir-circuits/target/transfer.json";
+// Dynamic import is used in browser environments to avoid build-time bundling issues
+let depositCircuit: any;
+let withdrawCircuit: any;
+let transferCircuit: any;
+
+// In Node.js environment (server/tests), use synchronous imports
+if (typeof window === "undefined") {
+  depositCircuit = require("../../../noir-circuits/target/deposit.json");
+  withdrawCircuit = require("../../../noir-circuits/target/withdraw.json");
+  transferCircuit = require("../../../noir-circuits/target/transfer.json");
+}
 
 /**
  * Get the compiled deposit circuit
  */
 export function getDepositCircuit(): CompiledCircuit {
+  if (!depositCircuit) {
+    throw new Error(
+      "Deposit circuit not loaded. This SDK works in Node.js environments only for proof generation.",
+    );
+  }
   return depositCircuit as CompiledCircuit;
 }
 
@@ -22,6 +35,11 @@ export function getDepositCircuit(): CompiledCircuit {
  * Get the compiled withdraw circuit
  */
 export function getWithdrawCircuit(): CompiledCircuit {
+  if (!withdrawCircuit) {
+    throw new Error(
+      "Withdraw circuit not loaded. This SDK works in Node.js environments only for proof generation.",
+    );
+  }
   return withdrawCircuit as CompiledCircuit;
 }
 
@@ -29,6 +47,11 @@ export function getWithdrawCircuit(): CompiledCircuit {
  * Get the compiled transfer circuit
  */
 export function getTransferCircuit(): CompiledCircuit {
+  if (!transferCircuit) {
+    throw new Error(
+      "Transfer circuit not loaded. This SDK works in Node.js environments only for proof generation.",
+    );
+  }
   return transferCircuit as CompiledCircuit;
 }
 
@@ -45,6 +68,11 @@ export class CircuitRegistry {
    */
   static getDepositCircuit(): CompiledCircuit {
     if (!this.depositCircuit) {
+      if (!depositCircuit) {
+        throw new Error(
+          "Deposit circuit not loaded. Proof generation works in Node.js environments only.",
+        );
+      }
       this.depositCircuit = depositCircuit as CompiledCircuit;
     }
     return this.depositCircuit;
@@ -55,6 +83,11 @@ export class CircuitRegistry {
    */
   static getWithdrawCircuit(): CompiledCircuit {
     if (!this.withdrawCircuit) {
+      if (!withdrawCircuit) {
+        throw new Error(
+          "Withdraw circuit not loaded. Proof generation works in Node.js environments only.",
+        );
+      }
       this.withdrawCircuit = withdrawCircuit as CompiledCircuit;
     }
     return this.withdrawCircuit;
@@ -65,6 +98,11 @@ export class CircuitRegistry {
    */
   static getTransferCircuit(): CompiledCircuit {
     if (!this.transferCircuit) {
+      if (!transferCircuit) {
+        throw new Error(
+          "Transfer circuit not loaded. Proof generation works in Node.js environments only.",
+        );
+      }
       this.transferCircuit = transferCircuit as CompiledCircuit;
     }
     return this.transferCircuit;
