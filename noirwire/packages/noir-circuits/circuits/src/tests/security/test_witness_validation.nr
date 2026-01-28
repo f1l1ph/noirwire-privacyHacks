@@ -143,7 +143,6 @@ fn test_merkle_witness_path_index_mutation() {
     let siblings = [200, 300, 400];
     let original_indices = [0, 1, 0];
     let mutated_indices = [1, 1, 0]; // First index flipped
-
     let original_proof = MerkleProof { siblings, path_indices: original_indices };
     let mutated_proof = MerkleProof { siblings, path_indices: mutated_indices };
 

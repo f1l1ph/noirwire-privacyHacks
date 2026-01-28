@@ -200,7 +200,6 @@ fn test_merkle_update_old_leaf_constraint() {
 fn test_range_check_constraint_coverage() {
     // Valid u64 amounts
     let valid_amounts: [u64; 4] = [0, 1, 1000, 18446744073709551615]; // max u64
-
     for i in 0..4 {
         let amount = valid_amounts[i];
 
@@ -280,7 +279,6 @@ fn test_balance_comparison_constraints() {
     assert(balance >= 1000); // exactly equal
     assert(balance >= 999); // balance > amount
     assert(!(balance >= 1001)); // balance < amount
-
     // Test with different values
     assert(2000 >= 1000);
     assert(!(500 >= 1000));
@@ -296,7 +294,6 @@ fn test_assertion_constraints() {
     assert(x == y);
     assert(x != 99);
     assert(x > 0);
-
     // These prove assertions are checked
 }
 
@@ -313,7 +310,6 @@ fn test_constraint_satisfaction_paths() {
 
     // Path 3: Withdraw (nullifier generation)
     let _nullifier = compute_nullifier(_deposit_commitment, 1, 0);
-
     // All paths should be fully constrained
     // If any constraint is missing, one of these would panic
 }
@@ -344,7 +340,6 @@ fn test_constraint_interactions() {
 #[test]
 fn test_constraint_scaling() {
     // Test with different depth merkle proofs
-
     // Depth 2
     let proof_d2 = MerkleProof { siblings: [100, 200], path_indices: [0, 1] };
     let root_d2 = compute_merkle_root(50, proof_d2);

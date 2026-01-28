@@ -74,7 +74,6 @@ fn test_double_spend_different_nonce() {
         nullifier1 != nullifier2,
         "Different nonces produce different nullifiers (enables multiple spending proofs)",
     );
-
     // However, both nullifiers refer to the same commitment
     // On-chain, spending the same commitment multiple times is still double-spend
     // because there's only one balance to withdraw

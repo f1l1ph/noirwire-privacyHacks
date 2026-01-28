@@ -46,7 +46,6 @@ pub struct TransferPrivate {
 /// Proves a valid private transfer between two parties
 pub fn main(public: TransferPublic, private: TransferPrivate) {
     // ===== SENDER CHECKS =====
-
     // 1. Reconstruct sender's commitment
     let sender_balance = Balance {
         owner: private.sender_owner,
@@ -74,7 +73,6 @@ pub fn main(public: TransferPublic, private: TransferPrivate) {
     assert(private.transfer_amount == (transfer_amount_u64 as Field));
 
     // ===== BALANCE CONSERVATION =====
-
     // 5. Compute new balances
     let new_sender_amount = private.sender_amount - private.transfer_amount;
 
@@ -97,7 +95,6 @@ pub fn main(public: TransferPublic, private: TransferPrivate) {
     let receiver_commitment = compute_commitment(receiver_balance);
 
     // ===== TREE UPDATE VERIFICATION =====
-
     // Step 1: Verify sender commitment removal (nullify)
     let intermediate_root = compute_intermediate_root(
         private.sender_leaf_index,

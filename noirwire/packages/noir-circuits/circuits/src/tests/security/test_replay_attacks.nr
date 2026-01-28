@@ -31,7 +31,6 @@ fn test_deposit_replay_attack() {
         commitment1 == commitment2,
         "Same blinding produces identical commitment - application must prevent replays",
     );
-
     // Protocol must enforce unique blinding per deposit via application-layer check
 }
 
@@ -49,7 +48,6 @@ fn test_withdrawal_recipient_substitution() {
 
     // Withdrawal proof is bound to recipient via public inputs
     // Changing recipient invalidates the proof
-
     // In real circuit, public inputs hash would include recipient
     let original_pub_hash = Poseidon2::hash([nullifier, amount, original_recipient], 3);
     let tampered_pub_hash = Poseidon2::hash([nullifier, amount, attacker_recipient], 3);
@@ -237,7 +235,6 @@ fn test_parallel_proof_submission() {
         submission1_nullifier == submission2_nullifier,
         "Parallel submissions produce same nullifier - atomic registry prevents both",
     );
-
     // Protocol must atomically check: first succeeds, second fails
 }
 
@@ -257,7 +254,6 @@ fn test_sequential_nonce_pattern() {
     assert(n1 != n2);
     assert(n2 != n3);
     assert(n1 != n3);
-
     // However, sequential nonces may leak usage patterns
     // Best practice: use random nonces
 }

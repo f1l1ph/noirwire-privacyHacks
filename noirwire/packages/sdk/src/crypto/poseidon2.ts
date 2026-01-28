@@ -1,25 +1,45 @@
 /**
  * Poseidon2 hash implementation for NoirWire SDK
- * Matches the Noir circuit implementation for cross-compatibility
+ * Uses compiled Noir circuits for guaranteed compatibility
  */
 
-// Lazy import to avoid loading WASM files during module initialization
-let barretenbergModule: any = null;
-let barretenbergInstance: any = null;
+import { Noir } from "@noir-lang/noir_js";
+import { BarretenbergBackend } from "@noir-lang/backend_barretenberg";
+// @ts-ignore - JSON import
+import hashHelper2Circuit from "../../noir-circuits/target/hash_helper_2.json";
+// @ts-ignore - JSON import
+import hashHelper5Circuit from "../../noir-circuits/target/hash_helper.json";
+
+// Singleton instances for different input sizes
+let noirHasher2: Noir | null = null;
+let hashBackend2: BarretenbergBackend | null = null;
+let noirHasher5: Noir | null = null;
+let hashBackend5: BarretenbergBackend | null = null;
 
 /**
- * Get or initialize Barretenberg instance (singleton pattern)
- * Lazy loads the module and WASM to avoid blocking app startup
+ * Get or initialize Noir hasher for 2 inputs (merkle trees)
  */
-async function getBarretenberg(): Promise<any> {
-  if (!barretenbergInstance) {
-    // Dynamically import only when first needed
-    if (!barretenbergModule) {
-      barretenbergModule = await import("@aztec/bb.js");
-    }
-    barretenbergInstance = await barretenbergModule.Barretenberg.new();
+async function getNoirHasher2() {
+  if (!noirHasher2) {
+    // @ts-ignore - Circuit JSON type mismatch
+    hashBackend2 = new BarretenbergBackend(hashHelper2Circuit);
+    // @ts-ignore - Circuit JSON type mismatch
+    noirHasher2 = new Noir(hashHelper2Circuit);
   }
-  return barretenbergInstance;
+  return noirHasher2;
+}
+
+/**
+ * Get or initialize Noir hasher for 5 inputs (commitments)
+ */
+async function getNoirHasher5() {
+  if (!noirHasher5) {
+    // @ts-ignore - Circuit JSON type mismatch
+    hashBackend5 = new BarretenbergBackend(hashHelper5Circuit);
+    // @ts-ignore - Circuit JSON type mismatch
+    noirHasher5 = new Noir(hashHelper5Circuit);
+  }
+  return noirHasher5;
 }
 
 /**
@@ -33,19 +53,49 @@ export const COMMITMENT_DOMAIN = 1n;
 export const NULLIFIER_DOMAIN = 2n;
 
 /**
- * Poseidon2 hash using Barretenberg
- * This is the native Aztec/Noir Poseidon2 implementation
+ * Poseidon2 hash using Noir's exact implementation via compiled circuit
+ *
+ * This executes the compiled Noir hash_helper circuit to compute Poseidon2 hashes,
+ * guaranteeing 100% compatibility with circuit computations.
  */
+
+// Cache for performance
+const NOIR_POSEIDON2_CACHE: Map<string, bigint> = new Map();
+
 export async function poseidon2Hash(inputs: bigint[]): Promise<bigint> {
-  const bb = await getBarretenberg();
-  // Convert bigints to Buffer (32 bytes each, big endian)
-  const buffers = inputs.map((i) => {
-    const hex = i.toString(16).padStart(64, "0");
-    return Buffer.from(hex, "hex");
-  });
-  const result = await bb.poseidon2Hash(buffers);
-  // Result is a Buffer, convert to bigint
-  return BigInt("0x" + result.toString("hex"));
+  // Support 2 inputs (merkle) and 5 inputs (commitments)
+  if (inputs.length !== 2 && inputs.length !== 5) {
+    throw new Error(
+      `poseidon2Hash supports 2 or 5 inputs (got ${inputs.length}). ` +
+        "Add more hash_helper circuits for other lengths.",
+    );
+  }
+
+  // Create cache key
+  const key = inputs.join(",");
+
+  // Check cache
+  if (NOIR_POSEIDON2_CACHE.has(key)) {
+    return NOIR_POSEIDON2_CACHE.get(key)!;
+  }
+
+  // Select appropriate circuit based on input length
+  const noir = inputs.length === 2 ? await getNoirHasher2() : await getNoirHasher5();
+
+  // Prepare inputs as hex strings (Noir format)
+  const inputsHex = inputs.map((i) => "0x" + i.toString(16));
+
+  // Execute circuit
+  // @ts-ignore - Backend signature mismatch
+  const { returnValue } = await noir.execute({ inputs: inputsHex });
+
+  // Parse result
+  const hash = BigInt(returnValue as string);
+
+  // Cache it
+  NOIR_POSEIDON2_CACHE.set(key, hash);
+
+  return hash;
 }
 
 /**
@@ -185,11 +235,17 @@ export function generateNullifierSecret(): bigint {
 }
 
 /**
- * Cleanup Barretenberg instance (call on app shutdown)
+ * Cleanup resources (call on app shutdown)
  */
 export async function cleanup(): Promise<void> {
-  if (barretenbergInstance) {
-    await barretenbergInstance.destroy();
-    barretenbergInstance = null;
+  if (hashBackend2) {
+    await hashBackend2.destroy();
+    hashBackend2 = null;
+    noirHasher2 = null;
+  }
+  if (hashBackend5) {
+    await hashBackend5.destroy();
+    hashBackend5 = null;
+    noirHasher5 = null;
   }
 }

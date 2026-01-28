@@ -130,7 +130,6 @@ fn test_nullifier_max_nonce() {
     let commitment = 12345;
     let secret = 67890;
     let max_nonce = 0 - 1; // Max field value
-
     let nullifier = compute_nullifier(commitment, secret, max_nonce);
     assert(nullifier != 0, "Nullifier valid with max nonce");
 }
@@ -291,7 +290,6 @@ fn test_chained_operations() {
     value = value - 100; // 200
     value = value - 100; // 100
     value = value - 100; // 0
-
     assert(value == 0, "Chained subtractions reach zero");
 }
 

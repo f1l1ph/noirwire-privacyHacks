@@ -76,7 +76,6 @@ fn verify_vault_membership<let N: u32>(
 /// Extends core transfer with vault membership checks
 fn main(public: VaultTransferPublic, private: VaultTransferPrivate) {
     // ===== SENDER CHECKS =====
-
     // 1. Reconstruct sender's commitment
     let sender_balance = Balance {
         owner: private.sender_owner,
@@ -113,7 +112,6 @@ fn main(public: VaultTransferPublic, private: VaultTransferPrivate) {
     assert(private.transfer_amount == (transfer_amount_u64 as Field));
 
     // ===== RECEIVER CHECKS =====
-
     // 7. Verify receiver vault ID matches public input
     assert(private.receiver_vault_id == public.receiver_vault_id);
 
@@ -131,7 +129,6 @@ fn main(public: VaultTransferPublic, private: VaultTransferPrivate) {
     }
 
     // ===== BALANCE CONSERVATION =====
-
     // 10. Compute new balances
     let new_sender_amount = private.sender_amount - private.transfer_amount;
 
@@ -154,7 +151,6 @@ fn main(public: VaultTransferPublic, private: VaultTransferPrivate) {
     let receiver_commitment = compute_commitment(receiver_balance);
 
     // ===== TREE UPDATE VERIFICATION =====
-
     // Step 1: Verify sender commitment removal (nullify)
     let intermediate_root = compute_intermediate_root(
         private.sender_leaf_index,

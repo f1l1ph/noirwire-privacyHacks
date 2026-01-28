@@ -125,7 +125,6 @@ fn test_leaf_index_encoding() {
     // [1, 0, 1] = index 5
     // [0, 1, 1] = index 6
     // [1, 1, 1] = index 7 (max for depth 3)
-
     let indices =
         [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]];
 
@@ -152,7 +151,6 @@ fn test_leaf_index_bounds() {
     // For TREE_DEPTH = 3, valid indices are 0 to 7
     let valid_min_indices = [0, 0, 0]; // Index 0
     let valid_max_indices = [1, 1, 1]; // Index 7
-
     let leaf = 100;
     let siblings = [200, 300, 400];
 
@@ -240,7 +238,6 @@ fn test_tree_consistency_operations() {
 
     let root0 = compute_merkle_root(empty, proof1); // Empty state
     let root1 = compute_merkle_root(leaf1, proof1); // After insertion 1
-
     assert(root0 != root1);
 
     // Insertion 2 at different index

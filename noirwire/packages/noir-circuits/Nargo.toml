@@ -1,3 +1,10 @@
 [workspace]
-members = ["circuits", "deposit", "withdraw", "transfer"]
+members = [
+    "circuits",
+    "deposit",
+    "withdraw",
+    "transfer",
+    "hash-helper",
+    "hash-helper-2",
+]
 default-member = "circuits"

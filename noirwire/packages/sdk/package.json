@@ -13,18 +13,18 @@
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts src/crypto/index.ts src/proof/index.ts --format cjs,esm && tsc --emitDeclarationOnly --outDir dist",
-    "dev": "tsup src/index.ts src/crypto/index.ts src/proof/index.ts --format cjs,esm --watch",
+    "build": "tsup && tsc --emitDeclarationOnly",
+    "dev": "tsup --watch",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@aztec/bb.js": "0.63.1",
+    "@aztec/bb.js": "0.58.0",
     "@magicblock-labs/ephemeral-rollups-sdk": "^0.8.3",
-    "@noir-lang/backend_barretenberg": "^0.35.0",
-    "@noir-lang/noir_js": "^0.35.0",
+    "@noir-lang/backend_barretenberg": "0.36.0",
+    "@noir-lang/noir_js": "0.36.0",
     "@noirwire/types": "*",
     "@noirwire/utils": "*",
     "@solana/web3.js": "^1.98.4",

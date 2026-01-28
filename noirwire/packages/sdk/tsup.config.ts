@@ -1,9 +1,9 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/crypto/index.ts", "src/proof/index.ts"],
+  entry: ["src/index.ts"],
   format: ["cjs", "esm"],
-  dts: false, // We run tsc separately for declarations
+  dts: false, // Use tsc for declarations
   sourcemap: false,
   clean: false,
   // Don't bundle dependencies - let Next.js/Turbopack handle them

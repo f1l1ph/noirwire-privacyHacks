@@ -28,7 +28,6 @@ use crate::primitives::nullifier::compute_nullifier;
 #[test]
 fn test_batch_composition_size_2() {
     // Batch of 2 items
-
     // Item 1
     let item1_owner = 11111;
     let item1_amount = 100;
@@ -204,7 +203,6 @@ fn test_batch_composition_size_64() {
 #[test]
 fn test_batch_constraint_independence() {
     // Verify that constraints for each item are independent
-
     // Create two batches with overlapping data
     let owner_a = 11111;
     let owner_b = 22222;
@@ -228,7 +226,6 @@ fn test_batch_constraint_independence() {
 
     // Different items produce different commitments
     assert(commitment_a != commitment_b);
-
     // Constraints don't interfere between batches
 }
 
@@ -236,7 +233,6 @@ fn test_batch_constraint_independence() {
 #[test]
 fn test_batch_nullifier_constraints() {
     // Verify all nullifiers in batch are checked
-
     let secret = 67890;
     let nonce_base = 100;
 
@@ -319,7 +315,6 @@ fn test_batch_amount_accumulation() {
 #[test]
 fn test_constraint_scaling_linear() {
     // Verify constraints scale linearly
-
     // Size-1 batch
     let owner1 = 11111;
     let commitment1 = compute_commitment(
@@ -356,7 +351,6 @@ fn test_constraint_scaling_linear() {
 #[test]
 fn test_batch_no_cross_item_interference() {
     // Verify that item constraints don't conflict
-
     let vault_id = 0;
     let blinding = 99999;
 
@@ -377,7 +371,6 @@ fn test_batch_no_cross_item_interference() {
     // Cross-check: same amounts but different owners produce different commitments
     assert(commitmentA1 != commitmentB1); // Same amount, different owner
     assert(commitmentA2 != commitmentB2); // Same amount, different owner
-
     // Items within batches are independent
     assert(commitmentA1 != commitmentA2);
     assert(commitmentB1 != commitmentB2);
@@ -387,7 +380,6 @@ fn test_batch_no_cross_item_interference() {
 #[test]
 fn test_batch_completion() {
     // Verify batch completes for all supported sizes
-
     for batch_size in [2, 4, 8, 16, 32, 64] {
         let mut count = 0;
 
@@ -408,7 +400,6 @@ fn test_batch_completion() {
 #[test]
 fn test_batch_constraint_coverage() {
     // Verify all constraints are exercised
-
     // Balance constraint
     let amount1 = 100;
     assert(amount1 as u64 > 0);
@@ -427,7 +418,6 @@ fn test_batch_constraint_coverage() {
     let proof = MerkleProof { siblings: [100, 200, 300], path_indices: [0, 1, 0] };
     let root = compute_merkle_root(commitment1, proof);
     assert(root != 0);
-
     // All constraint types covered in one "batch item"
 }
 
@@ -435,7 +425,6 @@ fn test_batch_constraint_coverage() {
 #[test]
 fn test_batch_heterogeneous_items() {
     // Different items with different properties
-
     let balances = [
         Balance { owner: 1, amount: 1, vault_id: 0, blinding: 1 }, // Min amount
         Balance { owner: 2, amount: 1000, vault_id: 0, blinding: 2 }, // Normal

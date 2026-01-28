@@ -169,7 +169,20 @@ export class ProofGenerator {
       },
     };
 
+    console.log("[ProofGenerator] Executing circuit with inputs:", {
+      public: inputs.public,
+      private: {
+        owner: inputs.private.owner,
+        vault_id: inputs.private.vault_id,
+        blinding: inputs.private.blinding,
+        siblings_count: inputs.private.insertion_proof.siblings.length,
+        first_3_siblings: inputs.private.insertion_proof.siblings.slice(0, 3),
+        first_3_indices: inputs.private.insertion_proof.path_indices.slice(0, 3),
+      },
+    });
+
     // Execute the circuit to generate witness
+    console.log("[ProofGenerator] Calling noir.execute()...");
     const { witness: solvedWitness } = await noir.execute(inputs);
 
     // Generate proof

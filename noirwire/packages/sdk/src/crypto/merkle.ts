@@ -250,6 +250,7 @@ export async function createMerkleTree(depth: number = TREE_DEPTH): Promise<Merk
 
 /**
  * Convert MerkleProof to format expected by Noir circuits
+ * Noir expects decimal string representations of Field elements
  */
 export function proofToNoirFormat(proof: MerkleProof): {
   siblings: string[];

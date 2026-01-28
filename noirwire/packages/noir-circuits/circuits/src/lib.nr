@@ -8,7 +8,7 @@ mod vault;
 mod tests;
 
 // Re-export primitives
-pub use primitives::{commitment, merkle, nullifier};
+pub use primitives::{commitment, merkle, nullifier, poseidon2};
 
 // Re-export core circuits
 pub use core::{deposit, transfer, withdraw};

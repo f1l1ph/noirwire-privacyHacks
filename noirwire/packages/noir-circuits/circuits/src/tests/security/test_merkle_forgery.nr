@@ -187,7 +187,6 @@ fn test_proof_depth_type_safety() {
 
     let root = compute_merkle_root(leaf, proof);
     assert(verify_merkle_inclusion(leaf, root, proof));
-
     // Attempting to create proof with wrong depth would fail at compile time:
     // let wrong_depth_proof: MerkleProof<5> = MerkleProof {
     //     siblings: [200, 300, 400],  // Type error: expected 5 elements
@@ -223,7 +222,6 @@ fn test_hash_collision_resistance() {
 #[test]
 fn test_merkle_preimage_resistance() {
     let target_root = 123456789; // Attacker wants to create proof for this root
-
     // Try different leaves to see if any produce target root
     let attempt1 = 100;
     let proof = MerkleProof { siblings: [200, 300, 400], path_indices: [0, 1, 0] };

@@ -246,7 +246,6 @@ fn test_multi_user_deposit_and_withdraw() {
     assert(user1_nullifier != user2_nullifier);
     assert(user2_nullifier != user3_nullifier);
     assert(user1_nullifier != user3_nullifier);
-
     // Verify conservation of funds
     // User2: 250 remaining
     // User3: 600 remaining
@@ -290,7 +289,6 @@ fn test_merkle_tree_updates_through_flow() {
     // Nullifier must be unique and deterministic
     let alice_nullifier_check = compute_nullifier(alice_commitment, alice_secret, 1);
     assert(alice_nullifier == alice_nullifier_check);
-
     // After nullification, tree structure changes again
     // This test demonstrates that roots evolve with state transitions
 }

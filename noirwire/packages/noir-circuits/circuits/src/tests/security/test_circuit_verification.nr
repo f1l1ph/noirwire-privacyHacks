@@ -298,7 +298,6 @@ fn test_withdraw_circuit_nullifier_for_remainder() {
 #[test]
 fn test_deposit_to_transfer_flow() {
     // Simulate: Deposit creates commitment, Transfer uses it
-
     // 1. Deposit: Create commitment
     let owner = 12345;
     let deposit_amount = 1000;
@@ -351,7 +350,6 @@ fn test_deposit_to_transfer_flow() {
 #[test]
 fn test_transfer_to_withdraw_flow() {
     // Simulate: Transfer creates balance, Withdraw uses it
-
     // 1. Transfer result: Receiver gets commitment
     let receiver_owner = 12345;
     let received_amount = 500;
@@ -392,13 +390,11 @@ fn test_transfer_to_withdraw_flow() {
 #[test]
 fn test_constraint_failure_on_invalid_balance() {
     // This test documents that balance constraints must fail
-
     let balance: u64 = 100;
     let transfer: u64 = 200;
 
     // This assertion should pass (documenting the constraint logic)
     assert(!(balance >= transfer));
-
     // If we try to do a transfer anyway, it would fail
     // let new_balance = balance - transfer; // This would overflow in u64
 }
@@ -413,7 +409,6 @@ fn test_constraint_failure_on_invalid_merkle() {
 
     // Incorrect leaf is not in the tree
     assert(!verify_merkle_inclusion(incorrect_leaf, root, proof));
-
     // This would fail in a circuit context
 }
 
@@ -424,7 +419,6 @@ fn test_constraint_failure_on_invalid_commitment() {
 
     // Modifying any part of balance changes commitment
     // Attempting to use wrong balance would fail commitment constraint
-
     let wrong_owner_balance = Balance { owner: 2, amount: 100, vault_id: 0, blinding: 1 };
     let wrong_commitment = compute_commitment(wrong_owner_balance);
 
@@ -444,6 +438,5 @@ fn test_constraint_failure_on_invalid_nullifier() {
 
     // Different secrets produce different nullifiers
     assert(correct_nullifier != wrong_nullifier);
-
     // In circuit: assert(computed_nullifier == public.nullifier) would fail
 }

@@ -43,7 +43,6 @@ fn test_commitment_constant_structure() {
     assert(commitment_small != commitment_medium);
     assert(commitment_medium != commitment_large);
     assert(commitment_small != commitment_large);
-
     // No size difference between commitments (all are Field)
 }
 
@@ -56,7 +55,6 @@ fn test_merkle_proof_constant_size() {
 
     // Both proofs have same structure (3 siblings, 3 path_indices)
     // No size variation based on values
-
     let leaf_small = 10;
     let leaf_large = 1000000;
 
@@ -180,7 +178,6 @@ fn test_hash_output_uniformity() {
             assert(nullifiers[i] != nullifiers[j]);
         }
     }
-
     // No simple relationship between inputs and outputs
     // (Each output is independent despite different amounts)
 }
@@ -190,7 +187,6 @@ fn test_hash_output_uniformity() {
 fn test_balance_check_constant_time() {
     // Balance checks must not leak whether balance is sufficient
     // through timing or control flow
-
     let balances: [u64; 3] = [100, 1000, 10000];
     let transfer_amounts: [u64; 3] = [50, 500, 5000];
 
@@ -232,7 +228,6 @@ fn test_commitment_amount_opaque() {
             assert(commitments[i] != commitments[j]);
         }
     }
-
     // Cannot predict next commitment from previous ones
 }
 
@@ -251,7 +246,6 @@ fn test_nullifier_input_hiding() {
     // Different nonces produce completely different nullifiers
     let nullifier_nonce2 = compute_nullifier(commitment, secret, 112);
     assert(nullifier1 != nullifier_nonce2);
-
     // Cannot partially modify nullifier
     // (Hash function is all-or-nothing)
 }
@@ -306,7 +300,6 @@ fn test_merkle_proof_position_opacity() {
     // But proof size and structure is identical (same depth)
     assert(root1 != root2);
     assert(root2 != root3);
-
     // All proofs have same structure (no position leakage)
 }
 
@@ -355,7 +348,6 @@ fn test_hash_randomness() {
             assert(outputs[i] != outputs[j]);
         }
     }
-
     // No linear relationship between index and output
 }
 
@@ -400,6 +392,5 @@ fn test_nullifier_secret_hiding() {
             assert(nullifiers[i] != nullifiers[j]);
         }
     }
-
     // Cannot reconstruct secret from nullifier
 }

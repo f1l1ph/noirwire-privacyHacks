@@ -1,15 +1,16 @@
 "use client";
 
 import { useWallet } from "@solana/wallet-adapter-react";
-import { useMemo, useState, useCallback } from "react";
-import { NoirWireClient, NoirWireWallet, type NoirWireClientConfig } from "@noirwire/sdk";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import { PublicKey } from "@solana/web3.js";
+import type { NoirWireClient, NoirWireWallet, NoirWireClientConfig } from "@noirwire/sdk";
 
 export function useNoirWire() {
   const { publicKey } = useWallet();
   const [noirWallet, setNoirWallet] = useState<NoirWireWallet | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [client, setClient] = useState<NoirWireClient | null>(null);
 
   // Get token mint from environment
   const tokenMint = useMemo(() => {
@@ -30,27 +31,46 @@ export function useNoirWire() {
     return new PublicKey(vkAddress);
   }, []);
 
-  // Initialize NoirWire client
-  const client = useMemo(() => {
-    if (!publicKey) return null;
+  // Dynamically initialize NoirWire client (client-side only)
+  useEffect(() => {
+    if (!publicKey || typeof window === "undefined") return;
 
-    const config: NoirWireClientConfig = {
-      network: "devnet",
-      rpcUrl: process.env.NEXT_PUBLIC_SOLANA_RPC,
-      tokenMint,
-      verificationKey,
-      vaultId: 0n, // Default to solo mode
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const { NoirWireClient: ClientClass } = await import("@noirwire/sdk");
+
+        if (cancelled) return;
+
+        const config: NoirWireClientConfig = {
+          network: "devnet",
+          rpcUrl: process.env.NEXT_PUBLIC_SOLANA_RPC,
+          tokenMint,
+          verificationKey,
+          vaultId: 0n, // Default to solo mode
+        };
+
+        setClient(new ClientClass(config));
+      } catch (err) {
+        console.error("Failed to initialize NoirWire client:", err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
     };
-
-    return new NoirWireClient(config);
   }, [publicKey, tokenMint, verificationKey]);
 
   // Create a new NoirWire wallet
   const createWallet = useCallback(async () => {
+    if (typeof window === "undefined") return;
+
     setIsLoading(true);
     setError(null);
     try {
-      const newWallet = NoirWireWallet.generate({ network: "devnet" });
+      const { NoirWireWallet: WalletClass } = await import("@noirwire/sdk");
+      const newWallet = WalletClass.generate({ network: "devnet" });
       setNoirWallet(newWallet);
 
       // Save to localStorage
@@ -73,18 +93,19 @@ export function useNoirWire() {
 
   // Load NoirWire wallet from localStorage
   const loadWallet = useCallback(async () => {
+    if (typeof window === "undefined") return null;
+
     setIsLoading(true);
     setError(null);
     try {
-      if (typeof window === "undefined") return null;
-
       const secretHex = localStorage.getItem("noirwire_wallet_secret");
       if (!secretHex) {
         return null;
       }
 
+      const { NoirWireWallet: WalletClass } = await import("@noirwire/sdk");
       const secretKey = new Uint8Array(Buffer.from(secretHex, "hex"));
-      const wallet = NoirWireWallet.fromSecretKey(secretKey, { network: "devnet" });
+      const wallet = WalletClass.fromSecretKey(secretKey, { network: "devnet" });
       setNoirWallet(wallet);
 
       return wallet;

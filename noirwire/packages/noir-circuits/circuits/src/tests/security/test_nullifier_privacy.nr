@@ -103,7 +103,6 @@ fn test_nullifier_unlinkability_amount() {
     assert(nullifier1 != nullifier2);
     assert(nullifier1 != nullifier3);
     assert(nullifier2 != nullifier3);
-
     // Nullifiers themselves don't reveal amount
     // (Computed from hash, not amount directly)
 }
@@ -203,13 +202,11 @@ fn test_nullifier_one_way_property() {
 
     // Given only nullifier, cannot compute commitment
     // This is guaranteed by Poseidon2's one-way property
-
     // Creating different commitments should produce different nullifiers
     let different_commitment = 54321;
     let different_nullifier = compute_nullifier(different_commitment, secret, nonce);
 
     assert(nullifier != different_nullifier);
-
     // Cannot brute-force commitment from nullifier without knowing secret
 }
 
@@ -279,7 +276,6 @@ fn test_nullifier_unlinkability_across_uses() {
     assert(nullifier1 != nullifier2);
     assert(nullifier1 != nullifier3);
     assert(nullifier2 != nullifier3);
-
     // Given only the nullifiers, cannot link them to same commitment
     // (Would require finding collision or reversing hash)
 }
@@ -310,7 +306,6 @@ fn test_privacy_against_amount_observation() {
             assert(nullifiers[i] != nullifiers[j]);
         }
     }
-
     // Observer cannot determine amount from nullifier
     // (Would need to know commitment or secret)
 }
@@ -340,7 +335,6 @@ fn test_privacy_against_owner_identification() {
             assert(nullifiers[i] != nullifiers[j]);
         }
     }
-
     // Observer cannot identify owner from nullifier
 }
 
@@ -369,7 +363,6 @@ fn test_privacy_against_vault_detection() {
             assert(nullifiers[i] != nullifiers[j]);
         }
     }
-
     // Observer cannot determine if user is in solo or vault context
 }
 
@@ -384,10 +377,8 @@ fn test_formal_one_way_property() {
 
     let nullifier = compute_nullifier(commitment, secret, nonce);
     assert(nullifier != 0); // Computable
-
     // Reverse direction is hard: cannot efficiently find commitment from nullifier
     // This is guaranteed by Poseidon2's cryptographic properties
-
     // Verifying is easy: can check if nullifier matches commitment
     let recomputed = compute_nullifier(commitment, secret, nonce);
     assert(recomputed == nullifier);
@@ -430,6 +421,5 @@ fn test_formal_information_hiding() {
 
     // Different nullifiers for different amounts
     assert(nullifier3 != nullifier4);
-
     // No way to determine which balance has which amount from nullifiers alone
 }

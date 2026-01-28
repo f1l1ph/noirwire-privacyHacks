@@ -314,6 +314,13 @@ export class NoirWireClient {
     const blinding = generateBlinding();
     const nullifierSecret = generateNullifierSecret();
 
+    console.log("[NoirWire SDK] Deposit parameters:", {
+      amount: amount.toString(),
+      owner: owner.toString(),
+      vaultId: vaultId.toString(),
+      blinding: blinding.toString(),
+    });
+
     // Compute commitment
     const balance: Balance = {
       owner,
@@ -323,13 +330,26 @@ export class NoirWireClient {
     };
     const commitment = await computeCommitment(balance);
 
+    console.log("[NoirWire SDK] Computed commitment:", commitment.toString());
+
     // Get current Merkle tree state
     const tree = stateManager.getTree();
     const oldRoot = tree.getRoot();
     const leafIndex = tree.getLeafCount();
 
+    console.log("[NoirWire SDK] Merkle tree state:", {
+      oldRoot: oldRoot.toString(),
+      leafIndex: leafIndex,
+    });
+
     // Insert commitment into tree to get proof and new root
     const { root: newRoot, proof: insertionProof } = await tree.insert(commitment);
+
+    console.log("[NoirWire SDK] After insertion:", {
+      newRoot: newRoot.toString(),
+      proofSiblings: insertionProof.siblings.slice(0, 3).map((s) => s.toString()),
+      proofIndices: insertionProof.pathIndices.slice(0, 3),
+    });
 
     // Generate ZK proof
     const depositWitness: DepositWitness = {
@@ -347,6 +367,7 @@ export class NoirWireClient {
       insertionProof,
     };
 
+    console.log("[NoirWire SDK] Generating proof with witness...");
     const proofResult = await this.depositProver!.generateDepositProof(depositWitness);
 
     // Format proof data for Solana

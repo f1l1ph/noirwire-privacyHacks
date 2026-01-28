@@ -130,7 +130,6 @@ fn test_domain_reordering_attack() {
 #[test(should_fail)]
 fn test_custom_domain_separator() {
     let custom_domain: Field = 0x99; // Attacker's custom domain
-
     let balance_data = [custom_domain, 11111, 1000, 0, 99999];
     let custom_commitment = Poseidon2::hash(balance_data, 5);
 
@@ -146,7 +145,6 @@ fn test_custom_domain_separator() {
 fn test_cross_domain_collision_resistance() {
     // Try to find inputs that produce same hash across domains
     // This should be infeasible due to Poseidon2 collision resistance
-
     let inputs = [100, 200, 300, 400];
 
     let with_commitment_domain = Poseidon2::hash(
