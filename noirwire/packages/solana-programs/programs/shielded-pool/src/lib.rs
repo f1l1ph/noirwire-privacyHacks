@@ -1,3 +1,6 @@
+#![allow(deprecated)]
+#![allow(unexpected_cfgs)]
+
 use anchor_lang::prelude::*;
 
 declare_id!("NWRZDZJMfUAd3iVvdMhpsKht5bgHZGPzynHhQ2JssQ2");
@@ -73,8 +76,15 @@ pub mod shielded_pool {
         nullifier: [u8; 32],
         nullifiers_root: [u8; 32],
         merkle_proof: Vec<[u8; 32]>,
+        path_indices: Vec<u8>, // CRITICAL-02 FIX: Path indices for merkle ordering
     ) -> Result<()> {
-        instructions::record_nullifier::handler(ctx, nullifier, nullifiers_root, merkle_proof)
+        instructions::record_nullifier::handler(
+            ctx,
+            nullifier,
+            nullifiers_root,
+            merkle_proof,
+            path_indices,
+        )
     }
 
     /// Clean up old nullifier PDAs to recover rent

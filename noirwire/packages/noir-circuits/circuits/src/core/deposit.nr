@@ -5,11 +5,11 @@ use crate::primitives::poseidon2::Poseidon2;
 
 /// Public inputs for deposit circuit
 pub struct DepositPublic {
-    deposit_amount: Field, // Amount being deposited (visible on L1)
-    new_commitment: Field, // New balance commitment
-    leaf_index: Field, // Index where commitment is inserted
-    old_root: Field, // Merkle root before insertion
-    new_root: Field, // Merkle root after insertion
+    pub deposit_amount: Field, // Amount being deposited (visible on L1)
+    pub new_commitment: Field, // New balance commitment
+    pub leaf_index: Field, // Index where commitment is inserted
+    pub old_root: Field, // Merkle root before insertion
+    pub new_root: Field, // Merkle root after insertion
 }
 
 /// Private inputs for deposit circuit

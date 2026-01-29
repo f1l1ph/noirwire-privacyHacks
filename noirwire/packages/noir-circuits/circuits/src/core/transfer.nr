@@ -9,9 +9,9 @@ use crate::primitives::nullifier::compute_nullifier;
 
 /// Public inputs for transfer circuit
 pub struct TransferPublic {
-    nullifier: Field, // Prevents double-spend
-    old_root: Field, // Current merkle root
-    new_root: Field, // New merkle root after transfer
+    pub nullifier: Field, // Prevents double-spend
+    pub old_root: Field, // Current merkle root
+    pub new_root: Field, // New merkle root after transfer
 }
 
 /// Private inputs for transfer circuit

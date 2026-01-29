@@ -273,7 +273,40 @@ export class SolanaClient {
   }
 
   /**
-   * Execute deposit transaction
+   * Build deposit transaction without sending (for external wallet signing)
+   */
+  async buildDepositTransaction(
+    depositor: PublicKey,
+    amount: BN,
+    proofData: DepositProofData,
+    verificationKey: PublicKey,
+  ): Promise<Transaction> {
+    // Create compute budget instruction (ZK verification is compute-intensive)
+    const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+      units: 400_000, // Deposit verification needs ~300k-400k CU
+    });
+
+    // Create deposit instruction
+    const depositIx = await this.createDepositInstruction(
+      depositor,
+      amount,
+      proofData,
+      verificationKey,
+    );
+
+    // Build transaction (caller will sign and send)
+    const tx = new Transaction().add(computeBudgetIx, depositIx);
+    tx.feePayer = depositor;
+
+    // Get recent blockhash
+    const { blockhash } = await this.connection.getLatestBlockhash("confirmed");
+    tx.recentBlockhash = blockhash;
+
+    return tx;
+  }
+
+  /**
+   * Execute deposit transaction (uses internal keypair for signing)
    */
   async deposit(
     depositor: Keypair,
@@ -312,7 +345,59 @@ export class SolanaClient {
   }
 
   /**
-   * Execute withdraw transaction
+   * Build withdraw transaction without sending (for external wallet signing)
+   */
+  async buildWithdrawTransaction(
+    payer: PublicKey,
+    recipient: PublicKey,
+    proofData: WithdrawProofData,
+    verificationKey: PublicKey,
+  ): Promise<Transaction> {
+    // Create compute budget instruction (ZK verification is compute-intensive)
+    const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+      units: 500_000, // Withdraw verification needs ~400k-500k CU
+    });
+
+    // Check if recipient token account exists, create if not
+    const recipientTokenAccount = await getAssociatedTokenAddress(this.tokenMint, recipient);
+
+    const accountInfo = await this.connection.getAccountInfo(recipientTokenAccount);
+    const instructions: TransactionInstruction[] = [computeBudgetIx];
+
+    if (!accountInfo) {
+      // Create associated token account
+      const createAtaIx = createAssociatedTokenAccountInstruction(
+        payer,
+        recipientTokenAccount,
+        recipient,
+        this.tokenMint,
+      );
+      instructions.push(createAtaIx);
+    }
+
+    // Create withdraw instruction
+    const withdrawIx = await this.createWithdrawInstruction(
+      payer,
+      recipient,
+      proofData,
+      verificationKey,
+    );
+
+    instructions.push(withdrawIx);
+
+    // Build transaction (caller will sign and send)
+    const tx = new Transaction().add(...instructions);
+    tx.feePayer = payer;
+
+    // Get recent blockhash
+    const { blockhash } = await this.connection.getLatestBlockhash("confirmed");
+    tx.recentBlockhash = blockhash;
+
+    return tx;
+  }
+
+  /**
+   * Execute withdraw transaction (uses internal keypair for signing)
    */
   async withdraw(
     payer: Keypair,

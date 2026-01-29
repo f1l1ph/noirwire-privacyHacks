@@ -1,6 +1,6 @@
 // NoirWire SDK - Production-Ready Main Entry Point
 
-import { Connection, PublicKey, Keypair } from "@solana/web3.js";
+import { Connection, PublicKey, Keypair, Transaction } from "@solana/web3.js";
 import { BN } from "@coral-xyz/anchor";
 import * as bip39 from "bip39";
 import nacl from "tweetnacl";
@@ -300,7 +300,156 @@ export class NoirWireClient {
   // ============================================
 
   /**
-   * Deposit tokens into the shielded pool
+   * Prepare a deposit transaction for external wallet signing (e.g., Phantom)
+   * Returns the transaction and commitment data for the caller to sign and send
+   */
+  async prepareDeposit(
+    amount: bigint,
+    depositorPubkey: PublicKey,
+  ): Promise<{
+    transaction: Transaction;
+    commitmentData: {
+      commitment: bigint;
+      amount: bigint;
+      owner: bigint;
+      vaultId: bigint;
+      blinding: bigint;
+      nullifierSecret: bigint;
+      leafIndex: number;
+    };
+  }> {
+    const wallet = this.getWallet();
+    const stateManager = this.getStateManager();
+    await this.initProvers();
+
+    // Generate commitment parameters
+    const owner = await wallet.getOwnerField();
+    const vaultId = this.config.vaultId ?? 0n;
+    const blinding = generateBlinding();
+    const nullifierSecret = generateNullifierSecret();
+
+    console.log("[NoirWire SDK] Deposit parameters:", {
+      amount: amount.toString(),
+      owner: owner.toString(),
+      vaultId: vaultId.toString(),
+      blinding: blinding.toString(),
+    });
+
+    // Compute commitment
+    const balance: Balance = {
+      owner,
+      amount,
+      vaultId,
+      blinding,
+    };
+    const commitment = await computeCommitment(balance);
+
+    console.log("[NoirWire SDK] Computed commitment:", commitment.toString());
+
+    // Get current Merkle tree state
+    const tree = stateManager.getTree();
+    const oldRoot = tree.getRoot();
+    const leafIndex = tree.getLeafCount();
+
+    console.log("[NoirWire SDK] Merkle tree state:", {
+      oldRoot: oldRoot.toString(),
+      leafIndex: leafIndex,
+    });
+
+    // Insert commitment into tree to get proof and new root
+    const { root: newRoot, proof: insertionProof } = await tree.insert(commitment);
+
+    console.log("[NoirWire SDK] After insertion:", {
+      newRoot: newRoot.toString(),
+      proofSiblings: insertionProof.siblings.slice(0, 3).map((s) => s.toString()),
+      proofIndices: insertionProof.pathIndices.slice(0, 3),
+    });
+
+    // Generate ZK proof
+    const depositWitness: DepositWitness = {
+      // Public inputs
+      depositAmount: amount,
+      newCommitment: commitment,
+      leafIndex,
+      oldRoot,
+      newRoot,
+
+      // Private inputs
+      owner,
+      vaultId,
+      blinding,
+      insertionProof,
+    };
+
+    console.log("[NoirWire SDK] Generating proof with witness...");
+    const proofResult = await this.depositProver!.generateDepositProof(depositWitness);
+
+    // Format proof data for Solana
+    const proofData: DepositProofData = {
+      proof: proofResult.proof,
+      depositAmount: bigintToBytes32(amount),
+      newCommitment: bigintToBytes32(commitment),
+      leafIndex: bigintToBytes32(BigInt(leafIndex)),
+      oldRoot: bigintToBytes32(oldRoot),
+      newRoot: bigintToBytes32(newRoot),
+    };
+
+    // Build transaction for external signing (Phantom will sign)
+    const transaction = await this.solanaClient.buildDepositTransaction(
+      depositorPubkey,
+      new BN(amount.toString()),
+      proofData,
+      this.config.verificationKey,
+    );
+
+    return {
+      transaction,
+      commitmentData: {
+        commitment,
+        amount,
+        owner,
+        vaultId,
+        blinding,
+        nullifierSecret,
+        leafIndex,
+      },
+    };
+  }
+
+  /**
+   * Record a successful deposit after external wallet confirms transaction
+   */
+  async recordDeposit(
+    commitmentData: {
+      commitment: bigint;
+      amount: bigint;
+      owner: bigint;
+      vaultId: bigint;
+      blinding: bigint;
+      nullifierSecret: bigint;
+      leafIndex: number;
+    },
+    txSignature: string,
+  ): Promise<void> {
+    const stateManager = this.getStateManager();
+
+    const commitmentRecord: CommitmentRecord = {
+      commitment: commitmentData.commitment,
+      amount: commitmentData.amount,
+      owner: commitmentData.owner,
+      vaultId: commitmentData.vaultId,
+      blinding: commitmentData.blinding,
+      nullifierSecret: commitmentData.nullifierSecret,
+      leafIndex: commitmentData.leafIndex,
+      timestamp: Date.now(),
+      txSignature,
+      spent: false,
+    };
+    await stateManager.addCommitment(commitmentRecord);
+  }
+
+  /**
+   * Deposit tokens into the shielded pool (uses internal wallet for signing)
    * Creates a private balance commitment and proves correct formation
    */
   async deposit(amount: bigint): Promise<string> {

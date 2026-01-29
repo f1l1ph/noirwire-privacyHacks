@@ -38,13 +38,13 @@ pub struct SettleBatch<'info> {
     /// Historical roots PDA for extended spending window (optional for production)
     /// SECURITY (CRITICAL-02): When provided, old roots are pushed here
     /// for 900-slot (~6 min) spending window
-    /// Uses zero-copy (AccountLoader) due to ~36KB size
+    /// Uses borsh serialization for Vec support in 900-root buffer
     #[account(
         mut,
         seeds = [HISTORICAL_ROOTS_SEED, pool.key().as_ref()],
         bump,
     )]
-    pub historical_roots: Option<AccountLoader<'info, HistoricalRoots>>,
+    pub historical_roots: Option<Account<'info, HistoricalRoots>>,
 
     pub system_program: Program<'info, System>,
 }
@@ -100,8 +100,7 @@ pub fn handler(ctx: Context<SettleBatch>, proof_data: BatchSettlementProofData) 
 
     // 5. SECURITY (CRITICAL-02): Also push to HistoricalRoots PDA if available
     // This provides the extended 900-slot (~6 min) spending window
-    if let Some(ref historical_roots_loader) = ctx.accounts.historical_roots {
-        let mut historical_roots = historical_roots_loader.load_mut()?;
+    if let Some(ref mut historical_roots) = ctx.accounts.historical_roots {
         // Verify the historical roots account belongs to this pool
         require!(
             historical_roots.pool == pool.key(),

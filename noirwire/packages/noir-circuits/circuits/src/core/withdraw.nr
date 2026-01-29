@@ -9,11 +9,11 @@ use crate::primitives::nullifier::compute_nullifier;
 
 /// Public inputs for withdraw circuit
 pub struct WithdrawPublic {
-    amount: Field, // Amount being withdrawn
-    recipient: Field, // L1 recipient address
-    nullifier: Field, // Prevents double-spend
-    old_root: Field, // Current merkle root
-    new_root: Field, // New merkle root after withdrawal
+    pub amount: Field, // Amount being withdrawn
+    pub recipient: Field, // L1 recipient address
+    pub nullifier: Field, // Prevents double-spend
+    pub old_root: Field, // Current merkle root
+    pub new_root: Field, // New merkle root after withdrawal
 }
 
 /// Private inputs for withdraw circuit

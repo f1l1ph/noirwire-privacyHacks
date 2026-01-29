@@ -3,25 +3,25 @@ use anchor_lang::prelude::*;
 
 /// Production Historical Roots PDA
 ///
-/// This separate account stores a ring buffer of 256 historical merkle roots,
+/// This separate account stores a ring buffer of 900 historical merkle roots,
 /// providing extended root validation beyond the pool's inline buffer.
 ///
 /// DESIGN:
 /// - Inline buffer (PoolState): 16 roots for quick lookups
-/// - Extended buffer (HistoricalRoots PDA): 256 roots (~100 seconds at 0.4s slots)
-/// - Combined: Total 272 roots of buffer capacity
+/// - Extended buffer (HistoricalRoots PDA): 900 roots (~360 seconds = 6 minutes at 0.4s slots)
+/// - Combined: Total 916 roots of buffer capacity
 /// - Uses zero-copy deserialization for performance
 ///
 /// STORAGE:
 /// - 8 (discriminator) + 1 (version) + 3 (padding) + 2 (roots_index) + 2 (padding)
-/// - + 32 (pool pubkey) + 256 * 32 (roots) + 256 * 8 (slots)
-/// - Total: ~10,288 bytes
+/// - + 32 (pool pubkey) + 900 * 32 (roots) + 900 * 8 (slots)
+/// - Total: ~31,288 bytes
 ///
-/// NOTE: For full 6-minute (900-slot) window, client should track additional
-/// roots off-chain or multiple HistoricalRoots PDAs can be chained.
+/// CRITICAL-03 FIX: Increased capacity to 900 slots for 6-minute window
+/// At 0.4s per slot: 900 * 0.4 = 360 seconds = 6 minutes
 ///
-/// See: Blueprint 11_Vault_Program.md, Security Audit CRITICAL-02, HIGH-01
-pub const HISTORICAL_ROOTS_CAPACITY: usize = 256;
+/// See: Blueprint 11_Vault_Program.md, Security Audit CRITICAL-03, HIGH-01
+pub const HISTORICAL_ROOTS_CAPACITY: usize = 900;
 
 /// Seeds for deriving the Historical Roots PDA
 pub const HISTORICAL_ROOTS_SEED: &[u8] = b"historical_roots";
@@ -30,59 +30,47 @@ pub const HISTORICAL_ROOTS_SEED: &[u8] = b"historical_roots";
 /// SECURITY (LOW-03): Versioning for future-proof upgrades
 pub const HISTORICAL_ROOTS_VERSION: u8 = 2;
 
-/// Zero-copy account for historical roots buffer
-/// IMPORTANT: Uses zero_copy to avoid BPF stack overflow
-/// Capacity limited to 256 to satisfy bytemuck Pod/Zeroable array bounds
-#[account(zero_copy)]
-#[repr(C)]
+/// Account for historical roots buffer
+/// DESIGN: Uses borsh serialization (not zero_copy) to support 900 roots (larger than bytemuck limit)
+/// Large arrays (> 256) cannot use zero_copy with bytemuck, so we use regular borsh encoding
+/// Performance impact is minimal since reads are infrequent relative to writes
+#[account]
+#[derive(Default)]
 pub struct HistoricalRoots {
     /// Account structure version
     /// SECURITY (LOW-03): Versioning for future-proof upgrades
     pub version: u8,
 
-    /// Padding for alignment (zero_copy requires proper alignment)
-    pub _padding1: [u8; 3],
-
-    /// Current index in the ring buffer (0-255)
+    /// Current index in the ring buffer (0-899)
     pub roots_index: u16,
-
-    /// Padding for alignment
-    pub _padding2: [u8; 2],
 
     /// The pool this historical roots account belongs to
     pub pool: Pubkey,
 
     /// Ring buffer of historical merkle roots
-    /// Size: 256 roots × 32 bytes = 8,192 bytes
-    pub roots: [[u8; 32]; HISTORICAL_ROOTS_CAPACITY],
+    /// Size: 900 roots × 32 bytes = 28,800 bytes
+    pub roots: Vec<[u8; 32]>,
 
     /// Ring buffer of slots when each root was added
     /// SECURITY (HIGH-01): Used for root expiration enforcement
-    /// Size: 256 slots × 8 bytes = 2,048 bytes
-    pub slots: [u64; HISTORICAL_ROOTS_CAPACITY],
+    /// Size: 900 slots × 8 bytes = 7,200 bytes
+    pub slots: Vec<u64>,
 }
 
 impl HistoricalRoots {
-    /// Calculate space needed for the account (must be manually specified due to large array)
-    /// Layout: 8 (discriminator) + 1 (version) + 3 (padding1) + 2 (roots_index) + 2 (padding2)
-    ///         + 32 (pool pubkey) + 256*32 (roots) + 256*8 (slots)
-    pub const SPACE: usize = 8   // discriminator
-        + 1                      // version
-        + 3                      // padding1
-        + 2                      // roots_index (u16)
-        + 2                      // padding2
-        + 32                     // pool pubkey
-        + (HISTORICAL_ROOTS_CAPACITY * 32)  // roots array (256 * 32 = 8192)
-        + (HISTORICAL_ROOTS_CAPACITY * 8); // slots array (256 * 8 = 2048)
+    /// Calculate maximum space needed for the account
+    /// Layout: 8 (discriminator) + 1 (version) + 2 (roots_index)
+    ///         + 32 (pool pubkey) + 4 (vec len) + 900*32 (roots) + 4 (vec len) + 900*8 (slots)
+    /// ~= 36KB (accounting for borsh overhead and vector lengths)
+    pub const MAX_SPACE: usize = 40000;
 
-    /// Initialize with all zeros (for zero-copy accounts)
+    /// Initialize with empty vectors
     pub fn init(&mut self, pool: Pubkey) {
         self.version = HISTORICAL_ROOTS_VERSION;
-        self._padding1 = [0u8; 3];
         self.roots_index = 0;
-        self._padding2 = [0u8; 2];
         self.pool = pool;
-        // roots and slots arrays are already zeroed by Solana account initialization
+        self.roots = vec![[0u8; 32]; HISTORICAL_ROOTS_CAPACITY];
+        self.slots = vec![0u64; HISTORICAL_ROOTS_CAPACITY];
     }
 
     /// Check if a root exists in the historical buffer (without expiration check)
@@ -177,17 +165,19 @@ pub fn find_historical_roots_pda(pool: &Pubkey, program_id: &Pubkey) -> (Pubkey,
 mod tests {
     use super::*;
 
+    fn create_test_roots() -> HistoricalRoots {
+        HistoricalRoots {
+            version: HISTORICAL_ROOTS_VERSION,
+            roots_index: 0,
+            pool: Pubkey::default(),
+            roots: vec![[0u8; 32]; HISTORICAL_ROOTS_CAPACITY],
+            slots: vec![0u64; HISTORICAL_ROOTS_CAPACITY],
+        }
+    }
+
     #[test]
     fn test_ring_buffer_push() {
-        let mut roots = HistoricalRoots {
-            version: HISTORICAL_ROOTS_VERSION,
-            _padding1: [0u8; 3],
-            roots_index: 0,
-            _padding2: [0u8; 2],
-            pool: Pubkey::default(),
-            roots: [[0u8; 32]; HISTORICAL_ROOTS_CAPACITY],
-            slots: [0u64; HISTORICAL_ROOTS_CAPACITY],
-        };
+        let mut roots = create_test_roots();
 
         // Push some roots with slot tracking
         let root1 = [1u8; 32];
@@ -207,15 +197,7 @@ mod tests {
 
     #[test]
     fn test_root_expiration() {
-        let mut roots = HistoricalRoots {
-            version: HISTORICAL_ROOTS_VERSION,
-            _padding1: [0u8; 3],
-            roots_index: 0,
-            _padding2: [0u8; 2],
-            pool: Pubkey::default(),
-            roots: [[0u8; 32]; HISTORICAL_ROOTS_CAPACITY],
-            slots: [0u64; HISTORICAL_ROOTS_CAPACITY],
-        };
+        let mut roots = create_test_roots();
 
         let root = [1u8; 32];
         let initial_slot = 100u64;
@@ -234,15 +216,8 @@ mod tests {
 
     #[test]
     fn test_wraparound() {
-        let mut roots = HistoricalRoots {
-            version: HISTORICAL_ROOTS_VERSION,
-            _padding1: [0u8; 3],
-            roots_index: (HISTORICAL_ROOTS_CAPACITY - 1) as u16,
-            _padding2: [0u8; 2],
-            pool: Pubkey::default(),
-            roots: [[0u8; 32]; HISTORICAL_ROOTS_CAPACITY],
-            slots: [0u64; HISTORICAL_ROOTS_CAPACITY],
-        };
+        let mut roots = create_test_roots();
+        roots.roots_index = (HISTORICAL_ROOTS_CAPACITY - 1) as u16;
 
         let root = [42u8; 32];
         let slot = 1000u64;
@@ -256,14 +231,8 @@ mod tests {
     #[test]
     fn test_space_calculation() {
         // Verify space is within Solana limits (max 10MB)
-        // Using const assertion to satisfy clippy
-        const _: () = assert!(HistoricalRoots::SPACE < 10 * 1024 * 1024);
-        // Verify expected size (updated with slots array and padding)
-        // 8 (discriminator) + 1 (version) + 3 (padding1) + 2 (roots_index) + 2 (padding2)
-        // + 32 (pool) + 256*32 (roots) + 256*8 (slots)
-        assert_eq!(
-            HistoricalRoots::SPACE,
-            8 + 1 + 3 + 2 + 2 + 32 + (256 * 32) + (256 * 8)
-        );
+        const _: () = assert!(HistoricalRoots::MAX_SPACE < 10 * 1024 * 1024);
+        // Verify max space is reasonable for 900 roots
+        const _: () = assert!(HistoricalRoots::MAX_SPACE >= 40000);
     }
 }

@@ -1,0 +1,7 @@
+[package]
+name = "hash_helper_3"
+type = "bin"
+authors = [""]
+compiler_version = ">=0.34.0"
+
+[dependencies]

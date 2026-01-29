@@ -1,3 +1,6 @@
+#![allow(deprecated)]
+#![allow(unexpected_cfgs)]
+
 use anchor_lang::prelude::*;
 
 declare_id!("NWRNe5ezj9SxCXVqrXbycbpT8drAvuaBknX3ChgGbnx");
@@ -58,13 +61,14 @@ pub mod zk_verifier {
 
         // Verify account has enough data
         require!(
-            pool_data.len() >= 40,
+            pool_data.len() >= 41,
             errors::VerifierError::InvalidPoolAccount
         );
 
-        // Extract authority pubkey from pool data (bytes 8-40)
+        // Extract authority pubkey from pool data (bytes 9-41)
+        // Layout: 8-byte discriminator + 1-byte version + 32-byte authority
         let mut authority_bytes = [0u8; 32];
-        authority_bytes.copy_from_slice(&pool_data[8..40]);
+        authority_bytes.copy_from_slice(&pool_data[9..41]);
         let pool_authority = Pubkey::new_from_array(authority_bytes);
 
         // Verify signer is pool authority
@@ -98,12 +102,14 @@ pub mod zk_verifier {
         let pool_data = ctx.accounts.pool.try_borrow_data()?;
 
         require!(
-            pool_data.len() >= 40,
+            pool_data.len() >= 41,
             errors::VerifierError::InvalidPoolAccount
         );
 
+        // Extract authority pubkey from pool data (bytes 9-41)
+        // Layout: 8-byte discriminator + 1-byte version + 32-byte authority
         let mut authority_bytes = [0u8; 32];
-        authority_bytes.copy_from_slice(&pool_data[8..40]);
+        authority_bytes.copy_from_slice(&pool_data[9..41]);
         let pool_authority = Pubkey::new_from_array(authority_bytes);
 
         require!(

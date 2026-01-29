@@ -6,15 +6,36 @@
 import { Noir } from "@noir-lang/noir_js";
 import { BarretenbergBackend } from "@noir-lang/backend_barretenberg";
 // @ts-ignore - JSON import
+import hashHelper1Circuit from "../../noir-circuits/target/hash_helper_1.json";
+// @ts-ignore - JSON import
 import hashHelper2Circuit from "../../noir-circuits/target/hash_helper_2.json";
+// @ts-ignore - JSON import
+import hashHelper3Circuit from "../../noir-circuits/target/hash_helper_3.json";
 // @ts-ignore - JSON import
 import hashHelper5Circuit from "../../noir-circuits/target/hash_helper.json";
 
 // Singleton instances for different input sizes
+let noirHasher1: Noir | null = null;
+let hashBackend1: BarretenbergBackend | null = null;
 let noirHasher2: Noir | null = null;
 let hashBackend2: BarretenbergBackend | null = null;
+let noirHasher3: Noir | null = null;
+let hashBackend3: BarretenbergBackend | null = null;
 let noirHasher5: Noir | null = null;
 let hashBackend5: BarretenbergBackend | null = null;
+
+/**
+ * Get or initialize Noir hasher for 1 input (owner derivation)
+ */
+async function getNoirHasher1() {
+  if (!noirHasher1) {
+    // @ts-ignore - Circuit JSON type mismatch
+    hashBackend1 = new BarretenbergBackend(hashHelper1Circuit);
+    // @ts-ignore - Circuit JSON type mismatch
+    noirHasher1 = new Noir(hashHelper1Circuit);
+  }
+  return noirHasher1;
+}
 
 /**
  * Get or initialize Noir hasher for 2 inputs (merkle trees)
@@ -27,6 +48,19 @@ async function getNoirHasher2() {
     noirHasher2 = new Noir(hashHelper2Circuit);
   }
   return noirHasher2;
+}
+
+/**
+ * Get or initialize Noir hasher for 3 inputs (nullifiers)
+ */
+async function getNoirHasher3() {
+  if (!noirHasher3) {
+    // @ts-ignore - Circuit JSON type mismatch
+    hashBackend3 = new BarretenbergBackend(hashHelper3Circuit);
+    // @ts-ignore - Circuit JSON type mismatch
+    noirHasher3 = new Noir(hashHelper3Circuit);
+  }
+  return noirHasher3;
 }
 
 /**
@@ -63,10 +97,11 @@ export const NULLIFIER_DOMAIN = 2n;
 const NOIR_POSEIDON2_CACHE: Map<string, bigint> = new Map();
 
 export async function poseidon2Hash(inputs: bigint[]): Promise<bigint> {
-  // Support 2 inputs (merkle) and 5 inputs (commitments)
-  if (inputs.length !== 2 && inputs.length !== 5) {
+  // Support 1, 2, 3, and 5 inputs
+  const supportedLengths = [1, 2, 3, 5];
+  if (!supportedLengths.includes(inputs.length)) {
     throw new Error(
-      `poseidon2Hash supports 2 or 5 inputs (got ${inputs.length}). ` +
+      `poseidon2Hash supports 1, 2, 3, or 5 inputs (got ${inputs.length}). ` +
         "Add more hash_helper circuits for other lengths.",
     );
   }
@@ -80,7 +115,23 @@ export async function poseidon2Hash(inputs: bigint[]): Promise<bigint> {
   }
 
   // Select appropriate circuit based on input length
-  const noir = inputs.length === 2 ? await getNoirHasher2() : await getNoirHasher5();
+  let noir: Noir;
+  switch (inputs.length) {
+    case 1:
+      noir = await getNoirHasher1();
+      break;
+    case 2:
+      noir = await getNoirHasher2();
+      break;
+    case 3:
+      noir = await getNoirHasher3();
+      break;
+    case 5:
+      noir = await getNoirHasher5();
+      break;
+    default:
+      throw new Error(`Unsupported input length: ${inputs.length}`);
+  }
 
   // Prepare inputs as hex strings (Noir format)
   const inputsHex = inputs.map((i) => "0x" + i.toString(16));

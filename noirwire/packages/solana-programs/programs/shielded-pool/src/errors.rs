@@ -61,4 +61,7 @@ pub enum PoolError {
 
     #[msg("Invalid circuit ID for this operation")]
     InvalidCircuitId,
+
+    #[msg("Invalid PER authority - must not be zero")]
+    InvalidPerAuthority,
 }

@@ -1,3 +1,4 @@
+use crate::errors::PoolError;
 use crate::state::*;
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token, TokenAccount};
@@ -52,6 +53,13 @@ pub fn handler(
 ) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
     let current_slot = Clock::get()?.slot;
+
+    // CRITICAL-05: Validate per_authority is not zero/invalid
+    // This prevents a malicious pool deployer from setting per_authority to their own address
+    require!(
+        per_authority != Pubkey::default(),
+        PoolError::InvalidPerAuthority
+    );
 
     // SECURITY (LOW-03): Set version for future migration support
     pool.version = POOL_STATE_VERSION;

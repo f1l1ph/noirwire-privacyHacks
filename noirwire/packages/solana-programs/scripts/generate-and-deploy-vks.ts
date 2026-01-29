@@ -206,7 +206,12 @@ function saveVK(circuitName: string, vk: ParsedVK): void {
  * Find pool PDA for the shielded pool program
  */
 async function findPoolPDA(program: Program): Promise<[PublicKey, number]> {
-  return PublicKey.findProgramAddressSync([Buffer.from("pool")], program.programId);
+  // Pool seeds include token mint: seeds = [b"pool", token_mint.key().as_ref()]
+  const TOKEN_MINT = new PublicKey("So11111111111111111111111111111111111111112");
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("pool"), TOKEN_MINT.toBuffer()],
+    program.programId,
+  );
 }
 
 /**

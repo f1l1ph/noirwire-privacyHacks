@@ -149,16 +149,14 @@ export class ProofGenerator {
 
     const noirProof = proofToNoirFormat(witness.insertionProof);
 
-    // Prepare inputs matching Noir circuit structure
+    // Prepare inputs matching Noir circuit structure (flat, not nested)
     const inputs = {
-      public: {
-        deposit_amount: witness.depositAmount.toString(),
-        new_commitment: witness.newCommitment.toString(),
-        leaf_index: witness.leafIndex.toString(),
-        old_root: witness.oldRoot.toString(),
-        new_root: witness.newRoot.toString(),
-      },
-      private: {
+      deposit_amount: witness.depositAmount.toString(),
+      new_commitment: witness.newCommitment.toString(),
+      leaf_index: witness.leafIndex.toString(),
+      old_root: witness.oldRoot.toString(),
+      new_root: witness.newRoot.toString(),
+      private_inputs: {
         owner: witness.owner.toString(),
         vault_id: witness.vaultId.toString(),
         blinding: witness.blinding.toString(),
@@ -170,14 +168,18 @@ export class ProofGenerator {
     };
 
     console.log("[ProofGenerator] Executing circuit with inputs:", {
-      public: inputs.public,
-      private: {
-        owner: inputs.private.owner,
-        vault_id: inputs.private.vault_id,
-        blinding: inputs.private.blinding,
-        siblings_count: inputs.private.insertion_proof.siblings.length,
-        first_3_siblings: inputs.private.insertion_proof.siblings.slice(0, 3),
-        first_3_indices: inputs.private.insertion_proof.path_indices.slice(0, 3),
+      deposit_amount: inputs.deposit_amount,
+      new_commitment: inputs.new_commitment,
+      leaf_index: inputs.leaf_index,
+      old_root: inputs.old_root,
+      new_root: inputs.new_root,
+      private_inputs: {
+        owner: inputs.private_inputs.owner,
+        vault_id: inputs.private_inputs.vault_id,
+        blinding: inputs.private_inputs.blinding,
+        siblings_count: inputs.private_inputs.insertion_proof.siblings.length,
+        first_3_siblings: inputs.private_inputs.insertion_proof.siblings.slice(0, 3),
+        first_3_indices: inputs.private_inputs.insertion_proof.path_indices.slice(0, 3),
       },
     });
 
@@ -207,16 +209,14 @@ export class ProofGenerator {
     const merkleProof = proofToNoirFormat(witness.merkleProof);
     const newBalanceProof = proofToNoirFormat(witness.newBalanceProof);
 
-    // Prepare inputs matching Noir circuit structure
+    // Prepare inputs matching Noir circuit structure (flat, not nested)
     const inputs = {
-      public: {
-        amount: witness.amount.toString(),
-        recipient: witness.recipient.toString(),
-        nullifier: witness.nullifier.toString(),
-        old_root: witness.oldRoot.toString(),
-        new_root: witness.newRoot.toString(),
-      },
-      private: {
+      amount: witness.amount.toString(),
+      recipient: witness.recipient.toString(),
+      nullifier: witness.nullifier.toString(),
+      old_root: witness.oldRoot.toString(),
+      new_root: witness.newRoot.toString(),
+      private_inputs: {
         owner: witness.owner.toString(),
         balance: witness.balance.toString(),
         vault_id: witness.vaultId.toString(),
@@ -259,14 +259,12 @@ export class ProofGenerator {
     const receiverProof = proofToNoirFormat(witness.receiverProof);
     const newSenderProof = proofToNoirFormat(witness.newSenderProof);
 
-    // Prepare inputs matching Noir circuit structure
+    // Prepare inputs matching Noir circuit structure (flat, not nested)
     const inputs = {
-      public: {
-        nullifier: witness.nullifier.toString(),
-        old_root: witness.oldRoot.toString(),
-        new_root: witness.newRoot.toString(),
-      },
-      private: {
+      nullifier: witness.nullifier.toString(),
+      old_root: witness.oldRoot.toString(),
+      new_root: witness.newRoot.toString(),
+      private_inputs: {
         sender_owner: witness.senderOwner.toString(),
         sender_amount: witness.senderAmount.toString(),
         sender_vault_id: witness.senderVaultId.toString(),

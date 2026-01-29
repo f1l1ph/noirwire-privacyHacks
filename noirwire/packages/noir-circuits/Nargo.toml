@@ -5,6 +5,8 @@ members = [
     "withdraw",
     "transfer",
     "hash-helper",
+    "hash-helper-1",
     "hash-helper-2",
+    "hash-helper-3",
 ]
 default-member = "circuits"

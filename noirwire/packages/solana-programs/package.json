@@ -9,6 +9,8 @@
     "test": "anchor test",
     "deploy": "anchor deploy",
     "deploy:devnet": "anchor deploy --provider.cluster devnet",
+    "init-pool": "ts-node scripts/init-pool.ts",
+    "init-pool:devnet": "ts-node scripts/init-pool.ts --devnet",
     "idl": "anchor idl init",
     "generate-vks": "ts-node scripts/generate-and-deploy-vks.ts --skip-deploy",
     "deploy-vks": "ts-node scripts/generate-and-deploy-vks.ts --deploy-only",
@@ -19,13 +21,15 @@
     "format:check": "cargo fmt -- --check"
   },
   "dependencies": {
+    "@aztec/bb.js": "^2.1.11",
     "@coral-xyz/anchor": "^0.31.1",
     "@solana/spl-token": "^0.4.6",
-    "@solana/web3.js": "^1.91.0"
+    "@solana/web3.js": "^1.91.0",
+    "js-sha3": "^0.9.3"
   },
   "devDependencies": {
     "@noble/hashes": "^2.0.1",
-    "@noir-lang/backend_barretenberg": "0.35.0",
+    "@noir-lang/backend_barretenberg": "0.36.0",
     "@types/bn.js": "^5.1.0",
     "@types/chai": "^4.3.0",
     "@types/mocha": "^9.0.0",

@@ -19,8 +19,8 @@ zk_verifier = "NWRNe5ezj9SxCXVqrXbycbpT8drAvuaBknX3ChgGbnx"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "localnet"
-wallet = "~/.config/solana/id.json"
+cluster = "devnet"
+wallet = ".devnet-keypair.json"
 
 [test]
 startup_wait = 10000

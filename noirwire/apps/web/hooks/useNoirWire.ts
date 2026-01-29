@@ -1,13 +1,16 @@
 "use client";
 
-import { useWallet } from "@solana/wallet-adapter-react";
+import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { useMemo, useState, useCallback, useEffect } from "react";
-import { PublicKey } from "@solana/web3.js";
+import { PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import type { NoirWireClient, NoirWireWallet, NoirWireClientConfig } from "@noirwire/sdk";
 
 export function useNoirWire() {
-  const { publicKey } = useWallet();
+  const { publicKey, sendTransaction } = useWallet();
+  const { connection } = useConnection();
   const [noirWallet, setNoirWallet] = useState<NoirWireWallet | null>(null);
+  const [noirWalletBalance, setNoirWalletBalance] = useState<number>(0);
+  const [phantomBalance, setPhantomBalance] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [client, setClient] = useState<NoirWireClient | null>(null);
@@ -124,19 +127,132 @@ export function useNoirWire() {
       localStorage.removeItem("noirwire_wallet_secret");
     }
     setNoirWallet(null);
+    setNoirWalletBalance(0);
   }, []);
 
-  // Make a deposit
-  const deposit = useCallback(
-    async (amount: bigint) => {
-      if (!client) throw new Error("Client not initialized");
-      if (!noirWallet) throw new Error("NoirWire wallet not loaded");
+  // Refresh Phantom (browser) wallet SOL balance
+  const refreshPhantomBalance = useCallback(async () => {
+    if (!publicKey || !connection) {
+      return 0;
+    }
+    try {
+      const balance = await connection.getBalance(publicKey);
+      const solBalance = balance / LAMPORTS_PER_SOL;
+      console.log("Phantom wallet balance:", solBalance, "SOL", "address:", publicKey.toBase58());
+      setPhantomBalance(solBalance);
+      return solBalance;
+    } catch (err) {
+      console.error("Failed to fetch Phantom balance:", err);
+      return 0;
+    }
+  }, [publicKey, connection]);
+
+  // Refresh NoirWire wallet SOL balance
+  const refreshWalletBalance = useCallback(async () => {
+    if (!noirWallet || !connection) {
+      console.log("refreshWalletBalance: wallet or connection not ready", {
+        noirWallet: !!noirWallet,
+        connection: !!connection,
+      });
+      return 0;
+    }
+    try {
+      const pubkey = noirWallet.getSolanaPublicKey();
+      console.log("Fetching balance for NoirWire wallet:", pubkey.toBase58());
+      const balance = await connection.getBalance(pubkey);
+      const solBalance = balance / LAMPORTS_PER_SOL;
+      console.log("NoirWire wallet balance:", solBalance, "SOL");
+      setNoirWalletBalance(solBalance);
+      return solBalance;
+    } catch (err) {
+      console.error("Failed to fetch wallet balance:", err);
+      return 0;
+    }
+  }, [noirWallet, connection]);
+
+  // Auto-refresh Phantom balance when connected
+  useEffect(() => {
+    if (publicKey && connection) {
+      refreshPhantomBalance();
+    }
+  }, [publicKey, connection, refreshPhantomBalance]);
+
+  // Auto-refresh NoirWire balance when wallet changes
+  useEffect(() => {
+    if (noirWallet) {
+      refreshWalletBalance();
+    }
+  }, [noirWallet, refreshWalletBalance]);
+
+  // Fund the NoirWire wallet from the connected browser wallet
+  const fundWallet = useCallback(
+    async (amountSol: number) => {
+      if (!publicKey || !noirWallet || !sendTransaction || !connection) {
+        throw new Error("Wallet not connected or NoirWire wallet not created");
+      }
 
       setIsLoading(true);
       setError(null);
       try {
+        const lamports = Math.floor(amountSol * LAMPORTS_PER_SOL);
+        const noirWalletPubkey = noirWallet.getSolanaPublicKey();
+
+        const transaction = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: publicKey,
+            toPubkey: noirWalletPubkey,
+            lamports,
+          }),
+        );
+
+        const signature = await sendTransaction(transaction, connection);
+        await connection.confirmTransaction(signature, "confirmed");
+
+        // Refresh balance after funding
+        await refreshWalletBalance();
+
+        return signature;
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : "Failed to fund wallet";
+        setError(errorMessage);
+        throw err;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [publicKey, noirWallet, sendTransaction, connection, refreshWalletBalance],
+  );
+
+  // Make a deposit using Phantom wallet for signing and fee payment
+  const deposit = useCallback(
+    async (amount: bigint) => {
+      if (!client) throw new Error("Client not initialized");
+      if (!noirWallet) throw new Error("NoirWire wallet not loaded");
+      if (!publicKey) throw new Error("Wallet not connected");
+      if (!sendTransaction) throw new Error("sendTransaction not available");
+
+      setIsLoading(true);
+      setError(null);
+      try {
+        // Connect the NoirWire wallet (for ZK proof generation)
         await client.connect(noirWallet);
-        const signature = await client.deposit(amount);
+
+        // Prepare the deposit transaction (Phantom will sign)
+        console.log("[useNoirWire] Preparing deposit with Phantom as payer:", publicKey.toBase58());
+        const { transaction, commitmentData } = await client.prepareDeposit(amount, publicKey);
+
+        // Send transaction using Phantom wallet
+        console.log("[useNoirWire] Sending transaction via Phantom...");
+        const signature = await sendTransaction(transaction, connection);
+
+        // Wait for confirmation
+        console.log("[useNoirWire] Waiting for confirmation...");
+        await connection.confirmTransaction(signature, "confirmed");
+
+        // Record the deposit in local state
+        await client.recordDeposit(commitmentData, signature);
+
+        console.log("[useNoirWire] Deposit successful:", signature);
         return signature;
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : "Deposit failed";
@@ -146,7 +262,7 @@ export function useNoirWire() {
         setIsLoading(false);
       }
     },
-    [client, noirWallet],
+    [client, noirWallet, publicKey, sendTransaction, connection],
   );
 
   // Make a withdrawal
@@ -190,12 +306,17 @@ export function useNoirWire() {
   return {
     client,
     noirWallet,
+    noirWalletBalance,
+    phantomBalance,
     isConnected: !!publicKey,
     isLoading,
     error,
     createWallet,
     loadWallet,
     deleteWallet,
+    fundWallet,
+    refreshWalletBalance,
+    refreshPhantomBalance,
     deposit,
     withdraw,
     getBalance,

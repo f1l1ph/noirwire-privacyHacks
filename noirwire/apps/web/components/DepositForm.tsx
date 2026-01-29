@@ -4,8 +4,17 @@ import { useState, useEffect } from "react";
 import { useNoirWire } from "../hooks/useNoirWire";
 
 export function DepositForm() {
-  const { isConnected, noirWallet, isLoading, error, createWallet, loadWallet, deposit } =
-    useNoirWire();
+  const {
+    isConnected,
+    noirWallet,
+    phantomBalance,
+    isLoading,
+    error,
+    createWallet,
+    loadWallet,
+    refreshPhantomBalance,
+    deposit,
+  } = useNoirWire();
 
   const [amount, setAmount] = useState("");
   const [depositStatus, setDepositStatus] = useState<string>("");
@@ -15,8 +24,9 @@ export function DepositForm() {
   useEffect(() => {
     if (isConnected) {
       loadWallet();
+      refreshPhantomBalance();
     }
-  }, [isConnected, loadWallet]);
+  }, [isConnected, loadWallet, refreshPhantomBalance]);
 
   const handleCreateWallet = async () => {
     try {
@@ -42,8 +52,14 @@ export function DepositForm() {
       return;
     }
 
+    const depositAmount = parseFloat(amount);
+    if (phantomBalance < depositAmount + 0.01) {
+      setDepositStatus(`Insufficient balance. Need ${depositAmount + 0.01} SOL (${depositAmount} + fees)`);
+      return;
+    }
+
     setDepositLoading(true);
-    setDepositStatus("Generating proof... (this may take 10-15 seconds)");
+    setDepositStatus("Generating ZK proof... (this may take 10-15 seconds)");
 
     try {
       // Convert amount to lamports (assuming SOL, 9 decimals)
@@ -142,16 +158,22 @@ export function DepositForm() {
         ) : (
           <>
             <div className="wallet-info">
-              <div className="wallet-info-label">NoirWire Wallet</div>
-              <div className="wallet-info-value tx-hash">
-                {noirWallet.getPublicKeyHex().substring(0, 32)}...
+              <div className="wallet-info-label">Your Wallet Balance</div>
+              <div
+                className="wallet-info-value"
+                style={{ color: phantomBalance > 0 ? "#22c55e" : "#ef4444", fontWeight: "bold", fontSize: "1.25rem" }}
+              >
+                {phantomBalance.toFixed(4)} SOL
+              </div>
+              <div className="wallet-info-label" style={{ marginTop: "0.5rem", fontSize: "0.8em", opacity: 0.7 }}>
+                NoirWire Privacy Wallet: {noirWallet.getPublicKeyHex().substring(0, 20)}...
               </div>
             </div>
 
-            <form onSubmit={handleDeposit} className="form">
+            <form onSubmit={handleDeposit} className="form" style={{ marginTop: "1rem" }}>
               <div className="form-group">
                 <label htmlFor="deposit-amount" className="form-label">
-                  Amount (SOL)
+                  Amount to Shield (SOL)
                 </label>
                 <input
                   id="deposit-amount"
@@ -166,19 +188,19 @@ export function DepositForm() {
                   aria-describedby="deposit-hint"
                 />
                 <span id="deposit-hint" className="form-hint">
-                  Minimum deposit: 0.001 SOL
+                  Your SOL will be converted to a private balance
                 </span>
               </div>
 
               <button
                 type="submit"
-                disabled={depositLoading || !amount}
+                disabled={depositLoading || !amount || phantomBalance < parseFloat(amount || "0") + 0.01}
                 className="btn btn-base btn-primary"
               >
                 {depositLoading ? (
                   <>
                     <span className="loading-spinner" />
-                    Generating Proof...
+                    {depositStatus.includes("proof") ? "Generating ZK Proof..." : "Processing..."}
                   </>
                 ) : (
                   <>
@@ -189,7 +211,7 @@ export function DepositForm() {
                         clipRule="evenodd"
                       />
                     </svg>
-                    Deposit & Shield
+                    Shield SOL
                   </>
                 )}
               </button>
@@ -200,10 +222,11 @@ export function DepositForm() {
                 className={`alert ${
                   depositStatus.includes("successful")
                     ? "alert-success"
-                    : depositStatus.includes("failed")
+                    : depositStatus.includes("failed") || depositStatus.includes("Insufficient")
                       ? "alert-danger"
                       : "alert-info"
                 }`}
+                style={{ marginTop: "1rem" }}
               >
                 <svg
                   className="alert-icon"
